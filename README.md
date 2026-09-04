@@ -2,6 +2,16 @@
 
 A Paseo v0.7 plugin that shows the highest GPU utilization and temperature from Prometheus in every active agent composer. Press the pill to open a compact per-GPU inspector with utilization, temperature, VRAM, and power.
 
+## Preview
+
+The composer pill keeps the busiest utilization and hottest temperature visible at a glance. Click it to open the full inspector.
+
+![GPU status pill in the Paseo composer](docs/images/composer-pill.png)
+
+The status pane shows utilization, temperature, VRAM, and power for each GPU.
+
+![Per-GPU status pane in Paseo](docs/images/status-pane.png)
+
 ## Data source
 
 Prometheus is the only data source. The plugin queries these NVIDIA DCGM exporter metrics:
