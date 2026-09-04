@@ -377,7 +377,7 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
           >
             {status?.gpus.map((gpu) => (
               <GpuCard
-                key={gpu.id}
+                key={gpu.key}
                 gpu={gpu}
                 theme={theme}
                 compact={layout.compact}
