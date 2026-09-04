@@ -2,6 +2,15 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { output as ZodOutput } from "zod";
+import {
+  buildPrometheusQueries,
+  buildPrometheusQueryUrl,
+  gpuMetricKey,
+  prometheusSourceFingerprint,
+  valuesByGpu,
+  type PrometheusSourceConfig,
+  type PrometheusVectorResult,
+} from "./status.core";
 import type { GpuStatus } from "./status.shared";
 import type { gpuStatusGet } from "./status.shared";
 
@@ -18,21 +27,9 @@ const DEFAULT_CONFIG = {
 const CACHE_DURATION_MS = 10_000;
 const REQUEST_TIMEOUT_MS = 4_000;
 
-interface PluginConfig {
-  prometheusUrl: string;
-  selector: string;
+interface PluginConfig extends PrometheusSourceConfig {
   hostLabel: string;
   showHostLabelInPill: boolean;
-  gpuQuery?: string;
-  temperatureQuery?: string;
-  memoryUsedQuery?: string;
-  memoryTotalQuery?: string;
-  powerQuery?: string;
-}
-
-interface PrometheusVectorResult {
-  metric?: Record<string, string>;
-  value?: [number, string];
 }
 
 interface PrometheusResponse {
@@ -44,7 +41,13 @@ interface PrometheusResponse {
   };
 }
 
+interface CollectionResult {
+  status: GpuStatus;
+  sourceFingerprint: string | null;
+}
+
 let cachedStatus: GpuStatus | undefined;
+let cachedSourceFingerprint: string | null = null;
 let cachedAt = 0;
 let pending: Promise<GpuStatus> | undefined;
 
@@ -141,14 +144,15 @@ function unavailable(
     PluginConfig,
     "hostLabel" | "showHostLabelInPill"
   > = DEFAULT_CONFIG,
+  previousStatus?: GpuStatus,
 ): GpuStatus {
   return {
     status: "unavailable",
     hostLabel: config.hostLabel,
     showHostLabelInPill: config.showHostLabelInPill,
-    gpus: cachedStatus?.gpus ?? [],
-    maxUtilizationPercent: cachedStatus?.maxUtilizationPercent ?? null,
-    sampledAt: cachedStatus?.sampledAt ?? null,
+    gpus: previousStatus?.gpus ?? [],
+    maxUtilizationPercent: previousStatus?.maxUtilizationPercent ?? null,
+    sampledAt: previousStatus?.sampledAt ?? null,
     message,
   };
 }
@@ -157,9 +161,7 @@ async function queryPrometheus(
   prometheusUrl: string,
   query: string,
 ): Promise<PrometheusVectorResult[]> {
-  const url = new URL("/api/v1/query", `${prometheusUrl.replace(/\/$/, "")}/`);
-  url.searchParams.set("query", query);
-  const response = await fetch(url, {
+  const response = await fetch(buildPrometheusQueryUrl(prometheusUrl, query), {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
@@ -176,38 +178,36 @@ async function queryPrometheus(
   return payload.data.result ?? [];
 }
 
-function valuesByGpu(results: PrometheusVectorResult[]): Map<string, number> {
-  return new Map(
-    results
-      .map(
-        ({ metric = {}, value }) =>
-          [
-            metric.gpu ?? metric.device ?? metric.UUID ?? "unknown",
-            Number(value?.[1]),
-          ] as const,
-      )
-      .filter((entry) => Number.isFinite(entry[1])),
-  );
-}
-
-async function collect(): Promise<GpuStatus> {
+async function collect(): Promise<CollectionResult> {
   let config: PluginConfig;
   try {
     config = loadConfig();
   } catch (error) {
-    return unavailable(
-      error instanceof Error
-        ? error.message
-        : "Could not load plugin configuration",
-    );
+    return {
+      status: unavailable(
+        error instanceof Error
+          ? error.message
+          : "Could not load plugin configuration",
+      ),
+      sourceFingerprint: null,
+    };
   }
 
   if (!config.prometheusUrl) {
-    return unavailable(`Set prometheusUrl in ${CONFIG_PATH}`, config);
+    return {
+      status: unavailable(`Set prometheusUrl in ${CONFIG_PATH}`, config),
+      sourceFingerprint: null,
+    };
   }
 
-  const metric = (name: string) => `${name}{${config.selector}}`;
+  let sourceFingerprint: string | null = null;
   try {
+    const queries = buildPrometheusQueries(config);
+    sourceFingerprint = prometheusSourceFingerprint(
+      config.prometheusUrl,
+      queries,
+    );
+
     const [
       utilizationResults,
       temperatureResults,
@@ -215,95 +215,129 @@ async function collect(): Promise<GpuStatus> {
       memoryTotalResults,
       powerResults,
     ] = await Promise.all([
-      queryPrometheus(
-        config.prometheusUrl,
-        config.gpuQuery ?? metric("DCGM_FI_DEV_GPU_UTIL"),
-      ),
-      queryPrometheus(
-        config.prometheusUrl,
-        config.temperatureQuery ?? metric("DCGM_FI_DEV_GPU_TEMP"),
-      ),
-      queryPrometheus(
-        config.prometheusUrl,
-        config.memoryUsedQuery ?? metric("DCGM_FI_DEV_FB_USED"),
-      ),
-      queryPrometheus(
-        config.prometheusUrl,
-        config.memoryTotalQuery ??
-          `${metric("DCGM_FI_DEV_FB_USED")} + ${metric("DCGM_FI_DEV_FB_FREE")} + ${metric("DCGM_FI_DEV_FB_RESERVED")}`,
-      ),
-      queryPrometheus(
-        config.prometheusUrl,
-        config.powerQuery ?? metric("DCGM_FI_DEV_POWER_USAGE"),
-      ),
+      queryPrometheus(config.prometheusUrl, queries.utilization),
+      queryPrometheus(config.prometheusUrl, queries.temperature),
+      queryPrometheus(config.prometheusUrl, queries.memoryUsed),
+      queryPrometheus(config.prometheusUrl, queries.memoryTotal),
+      queryPrometheus(config.prometheusUrl, queries.power),
     ]);
     const temperatures = valuesByGpu(temperatureResults);
     const memoryUsed = valuesByGpu(memoryUsedResults);
     const memoryTotal = valuesByGpu(memoryTotalResults);
     const power = valuesByGpu(powerResults);
-    const gpus = utilizationResults
-      .map(({ metric = {}, value }) => {
-        const id = metric.gpu ?? metric.device ?? metric.UUID ?? "unknown";
-        return {
-          id,
-          model: metric.modelName ?? null,
-          utilizationPercent: Number(value?.[1]),
-          temperatureCelsius: temperatures.get(id) ?? null,
-          memoryUsedMiB: memoryUsed.get(id) ?? null,
-          memoryTotalMiB: memoryTotal.get(id) ?? null,
-          powerWatts: power.get(id) ?? null,
-          sampleSeconds: value?.[0],
-        };
-      })
-      .filter(
-        (gpu) =>
-          Number.isFinite(gpu.utilizationPercent) &&
-          gpu.utilizationPercent >= 0 &&
-          gpu.utilizationPercent <= 100,
-      )
-      .sort((left, right) => left.id.localeCompare(right.id));
+    const gpusByKey = new Map<
+      string,
+      {
+        key: string;
+        id: string;
+        model: string | null;
+        utilizationPercent: number;
+        temperatureCelsius: number | null;
+        memoryUsedMiB: number | null;
+        memoryTotalMiB: number | null;
+        powerWatts: number | null;
+        sampleSeconds: number | undefined;
+      }
+    >();
+
+    for (const { metric = {}, value } of utilizationResults) {
+      const key = gpuMetricKey(metric);
+      const utilizationPercent = Number(value?.[1]);
+      if (
+        !key ||
+        !Number.isFinite(utilizationPercent) ||
+        utilizationPercent < 0 ||
+        utilizationPercent > 100
+      ) {
+        continue;
+      }
+
+      const sampleSeconds = value?.[0];
+      const previous = gpusByKey.get(key);
+      if (
+        previous?.sampleSeconds !== undefined &&
+        sampleSeconds !== undefined &&
+        previous.sampleSeconds > sampleSeconds
+      ) {
+        continue;
+      }
+
+      gpusByKey.set(key, {
+        key,
+        id: metric.gpu ?? metric.device ?? metric.UUID ?? "unknown",
+        model: metric.modelName ?? null,
+        utilizationPercent,
+        temperatureCelsius: temperatures.get(key) ?? null,
+        memoryUsedMiB: memoryUsed.get(key) ?? null,
+        memoryTotalMiB: memoryTotal.get(key) ?? null,
+        powerWatts: power.get(key) ?? null,
+        sampleSeconds,
+      });
+    }
+
+    const gpus = [...gpusByKey.values()].sort(
+      (left, right) =>
+        left.id.localeCompare(right.id) || left.key.localeCompare(right.key),
+    );
 
     if (gpus.length === 0) {
-      return unavailable("Prometheus returned no GPU metrics", config);
+      return {
+        status: unavailable("Prometheus returned no GPU metrics", config),
+        sourceFingerprint,
+      };
     }
 
     const newestSampleSeconds = Math.max(
       ...gpus.map(({ sampleSeconds }) => sampleSeconds ?? 0),
     );
     return {
-      status: "ok",
-      hostLabel: config.hostLabel,
-      showHostLabelInPill: config.showHostLabelInPill,
-      gpus: gpus.map(
-        ({
-          id,
-          model,
-          utilizationPercent,
-          temperatureCelsius,
-          memoryUsedMiB,
-          memoryTotalMiB,
-          powerWatts,
-        }) => ({
-          id,
-          model,
-          utilizationPercent,
-          temperatureCelsius,
-          memoryUsedMiB,
-          memoryTotalMiB,
-          powerWatts,
-        }),
-      ),
-      maxUtilizationPercent: Math.max(
-        ...gpus.map(({ utilizationPercent }) => utilizationPercent),
-      ),
-      sampledAt: new Date(newestSampleSeconds * 1000).toISOString(),
-      message: null,
+      status: {
+        status: "ok",
+        hostLabel: config.hostLabel,
+        showHostLabelInPill: config.showHostLabelInPill,
+        gpus: gpus.map(
+          ({
+            key,
+            id,
+            model,
+            utilizationPercent,
+            temperatureCelsius,
+            memoryUsedMiB,
+            memoryTotalMiB,
+            powerWatts,
+          }) => ({
+            key,
+            id,
+            model,
+            utilizationPercent,
+            temperatureCelsius,
+            memoryUsedMiB,
+            memoryTotalMiB,
+            powerWatts,
+          }),
+        ),
+        maxUtilizationPercent: Math.max(
+          ...gpus.map(({ utilizationPercent }) => utilizationPercent),
+        ),
+        sampledAt: new Date(newestSampleSeconds * 1000).toISOString(),
+        message: null,
+      },
+      sourceFingerprint,
     };
   } catch (error) {
-    return unavailable(
-      error instanceof Error ? error.message : "Prometheus query failed",
-      config,
-    );
+    const previousStatus =
+      sourceFingerprint !== null &&
+      sourceFingerprint === cachedSourceFingerprint
+        ? cachedStatus
+        : undefined;
+    return {
+      status: unavailable(
+        error instanceof Error ? error.message : "Prometheus query failed",
+        config,
+        previousStatus,
+      ),
+      sourceFingerprint,
+    };
   }
 }
 
@@ -314,8 +348,9 @@ export async function getGpuStatus(
     return cachedStatus;
   }
 
-  pending ??= collect().then((status) => {
+  pending ??= collect().then(({ status, sourceFingerprint }) => {
     cachedStatus = status;
+    cachedSourceFingerprint = sourceFingerprint;
     cachedAt = Date.now();
     return status;
   });
