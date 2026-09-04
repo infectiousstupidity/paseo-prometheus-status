@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  typecheck:
+  check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -33,3 +33,6 @@ jobs:
 
       - name: Type-check
         run: npm run typecheck
+
+      - name: Test
+        run: npm test

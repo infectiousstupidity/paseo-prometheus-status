@@ -2,6 +2,7 @@ import { defineRpc } from "@getpaseo/plugin/server";
 import { z } from "zod";
 
 const gpu = z.object({
+  key: z.string(),
   id: z.string(),
   model: z.string().nullable(),
   utilizationPercent: z.number().min(0).max(100),

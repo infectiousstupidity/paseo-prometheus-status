@@ -42,7 +42,7 @@ The generated file looks like this:
 }
 ```
 
-Set `prometheusUrl` to the Prometheus base URL visible from the Paseo daemon. Set `selector` to the contents of a PromQL label selector that identifies the intended DCGM exporter or GPU host; do not include the surrounding braces:
+Set `prometheusUrl` to the HTTP or HTTPS Prometheus base URL visible from the Paseo daemon. Path-prefixed installations are supported, for example `https://metrics.example/prometheus`. Set `selector` to the contents of a PromQL label selector that identifies the intended DCGM exporter or GPU host; do not include the surrounding braces:
 
 ```json
 {
@@ -100,6 +100,7 @@ The collector and clients refresh every 10 seconds. A sample older than 30 secon
 ```bash
 npm install
 npm run typecheck
+npm test
 paseo plugin install /absolute/path/to/paseo-prometheus-status
 ```
 
@@ -107,5 +108,6 @@ After source changes:
 
 ```bash
 npm run typecheck
+npm test
 paseo plugin reload paseo-prometheus-status
 ```
