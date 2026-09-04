@@ -51,6 +51,18 @@ let cachedSourceFingerprint: string | null = null;
 let cachedAt = 0;
 let pending: Promise<GpuStatus> | undefined;
 
+function cachedStatusForSource(
+  sourceFingerprint: string | null,
+): GpuStatus | undefined {
+  if (
+    sourceFingerprint === null ||
+    sourceFingerprint !== cachedSourceFingerprint
+  ) {
+    return undefined;
+  }
+  return cachedStatus;
+}
+
 function ensureConfigFile() {
   mkdirSync(dirname(CONFIG_PATH), { recursive: true });
   try {
@@ -282,7 +294,11 @@ async function collect(): Promise<CollectionResult> {
 
     if (gpus.length === 0) {
       return {
-        status: unavailable("Prometheus returned no GPU metrics", config),
+        status: unavailable(
+          "Prometheus returned no GPU metrics",
+          config,
+          cachedStatusForSource(sourceFingerprint),
+        ),
         sourceFingerprint,
       };
     }
@@ -325,16 +341,11 @@ async function collect(): Promise<CollectionResult> {
       sourceFingerprint,
     };
   } catch (error) {
-    const previousStatus =
-      sourceFingerprint !== null &&
-      sourceFingerprint === cachedSourceFingerprint
-        ? cachedStatus
-        : undefined;
     return {
       status: unavailable(
         error instanceof Error ? error.message : "Prometheus query failed",
         config,
-        previousStatus,
+        cachedStatusForSource(sourceFingerprint),
       ),
       sourceFingerprint,
     };
