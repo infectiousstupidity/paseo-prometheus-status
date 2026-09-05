@@ -445,7 +445,7 @@ export function contributeGpuStatusPills(client: PluginClientContext) {
   });
 
   void client.paseo.agents
-    .list({ scope: "active", page: { limit: 500 }, subscribe: {} })
+    .list({ scope: "active", page: { limit: 500 } })
     .then(({ entries }) => {
       if (stopped) return;
       for (const { agent } of entries) upsert(agent);
