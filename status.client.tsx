@@ -10,7 +10,7 @@ import { ScrollView, Text, View } from "react-native";
 import { gpuStatusGet, type GpuStatus } from "./status.shared";
 
 const REFRESH_INTERVAL_MS = 10_000;
-const STALE_AFTER_MS = 30_000;
+const STALE_AFTER_SECONDS = 30;
 const WARM_TEMPERATURE_CELSIUS = 75;
 const HOT_TEMPERATURE_CELSIUS = 85;
 
@@ -51,7 +51,7 @@ function displayState(status: GpuStatus | undefined, queryFailed = false) {
   let kind: DisplayKind;
   if (queryFailed || status?.status === "unavailable") kind = "offline";
   else if (!status) kind = "connecting";
-  else if (age !== null && age > STALE_AFTER_MS) kind = "stale";
+  else if (age !== null && age > STALE_AFTER_SECONDS) kind = "stale";
   else if (maxTemperature !== null && maxTemperature >= HOT_TEMPERATURE_CELSIUS)
     kind = "hot";
   else if (

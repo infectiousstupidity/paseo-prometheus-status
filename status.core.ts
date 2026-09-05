@@ -2,6 +2,7 @@ export interface PrometheusSourceConfig {
   prometheusUrl: string;
   selector: string;
   gpuQuery?: string;
+  gpuTimestampQuery?: string;
   temperatureQuery?: string;
   memoryUsedQuery?: string;
   memoryTotalQuery?: string;
@@ -10,6 +11,7 @@ export interface PrometheusSourceConfig {
 
 export interface PrometheusQueries {
   utilization: string;
+  utilizationTimestamp: string;
   temperature: string;
   memoryUsed: string;
   memoryTotal: string;
@@ -28,9 +30,13 @@ function metric(name: string, selector: string): string {
 export function buildPrometheusQueries(
   config: PrometheusSourceConfig,
 ): PrometheusQueries {
+  const utilization =
+    config.gpuQuery ?? metric("DCGM_FI_DEV_GPU_UTIL", config.selector);
+
   return {
-    utilization:
-      config.gpuQuery ?? metric("DCGM_FI_DEV_GPU_UTIL", config.selector),
+    utilization,
+    utilizationTimestamp:
+      config.gpuTimestampQuery ?? `timestamp(${utilization})`,
     temperature:
       config.temperatureQuery ??
       metric("DCGM_FI_DEV_GPU_TEMP", config.selector),
@@ -80,6 +86,7 @@ export function prometheusSourceFingerprint(
   return JSON.stringify([
     normalizePrometheusBaseUrl(prometheusUrl).toString(),
     queries.utilization,
+    queries.utilizationTimestamp,
     queries.temperature,
     queries.memoryUsed,
     queries.memoryTotal,

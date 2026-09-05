@@ -135,6 +135,9 @@ function loadConfig(): PluginConfig {
     gpuQuery:
       process.env.PASEO_PROMETHEUS_GPU_QUERY?.trim() ||
       optionalString(raw.gpuQuery, "gpuQuery"),
+    gpuTimestampQuery:
+      process.env.PASEO_PROMETHEUS_GPU_TIMESTAMP_QUERY?.trim() ||
+      optionalString(raw.gpuTimestampQuery, "gpuTimestampQuery"),
     temperatureQuery:
       process.env.PASEO_PROMETHEUS_GPU_TEMPERATURE_QUERY?.trim() ||
       optionalString(raw.temperatureQuery, "temperatureQuery"),
@@ -222,17 +225,20 @@ async function collect(): Promise<CollectionResult> {
 
     const [
       utilizationResults,
+      utilizationTimestampResults,
       temperatureResults,
       memoryUsedResults,
       memoryTotalResults,
       powerResults,
     ] = await Promise.all([
       queryPrometheus(config.prometheusUrl, queries.utilization),
+      queryPrometheus(config.prometheusUrl, queries.utilizationTimestamp),
       queryPrometheus(config.prometheusUrl, queries.temperature),
       queryPrometheus(config.prometheusUrl, queries.memoryUsed),
       queryPrometheus(config.prometheusUrl, queries.memoryTotal),
       queryPrometheus(config.prometheusUrl, queries.power),
     ]);
+    const utilizationTimestamps = valuesByGpu(utilizationTimestampResults);
     const temperatures = valuesByGpu(temperatureResults);
     const memoryUsed = valuesByGpu(memoryUsedResults);
     const memoryTotal = valuesByGpu(memoryTotalResults);
@@ -264,11 +270,12 @@ async function collect(): Promise<CollectionResult> {
         continue;
       }
 
-      const sampleSeconds = value?.[0];
+      const sampleSeconds = utilizationTimestamps.get(key);
+      if (sampleSeconds === undefined || sampleSeconds <= 0) continue;
+
       const previous = gpusByKey.get(key);
       if (
         previous?.sampleSeconds !== undefined &&
-        sampleSeconds !== undefined &&
         previous.sampleSeconds > sampleSeconds
       ) {
         continue;
@@ -303,7 +310,7 @@ async function collect(): Promise<CollectionResult> {
       };
     }
 
-    const newestSampleSeconds = Math.max(
+    const oldestSampleSeconds = Math.min(
       ...gpus.map(({ sampleSeconds }) => sampleSeconds ?? 0),
     );
     return {
@@ -335,7 +342,7 @@ async function collect(): Promise<CollectionResult> {
         maxUtilizationPercent: Math.max(
           ...gpus.map(({ utilizationPercent }) => utilizationPercent),
         ),
-        sampledAt: new Date(newestSampleSeconds * 1000).toISOString(),
+        sampledAt: new Date(oldestSampleSeconds * 1000).toISOString(),
         message: null,
       },
       sourceFingerprint,

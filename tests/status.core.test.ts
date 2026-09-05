@@ -74,6 +74,32 @@ test("keeps the newest duplicate sample for one GPU", () => {
   assert.equal(values.get("uuid:GPU-a"), 62);
 });
 
+test("queries source timestamps for the effective utilization metric", () => {
+  const queries = buildPrometheusQueries({
+    prometheusUrl: "https://metrics.example/prometheus",
+    selector: 'instance="host-a:9400"',
+    gpuQuery: 'rate(gpu_busy_total{instance="host-a:9400"}[5m])',
+  });
+
+  assert.equal(
+    queries.utilizationTimestamp,
+    'timestamp(rate(gpu_busy_total{instance="host-a:9400"}[5m]))',
+  );
+});
+
+test("supports an explicit source timestamp query", () => {
+  const queries = buildPrometheusQueries({
+    prometheusUrl: "https://metrics.example/prometheus",
+    selector: "",
+    gpuTimestampQuery: 'timestamp(gpu_busy_total{job="dcgm-exporter"})',
+  });
+
+  assert.equal(
+    queries.utilizationTimestamp,
+    'timestamp(gpu_busy_total{job="dcgm-exporter"})',
+  );
+});
+
 test("source fingerprint changes when effective queries change", () => {
   const firstQueries = buildPrometheusQueries({
     prometheusUrl: "https://metrics.example/prometheus",

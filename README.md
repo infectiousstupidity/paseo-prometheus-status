@@ -70,12 +70,15 @@ The selector is inserted between `{` and `}` in every default query. Advanced us
 ```json
 {
   "gpuQuery": "DCGM_FI_DEV_GPU_UTIL{job=\"dcgm-exporter\"}",
+  "gpuTimestampQuery": "timestamp(DCGM_FI_DEV_GPU_UTIL{job=\"dcgm-exporter\"})",
   "temperatureQuery": "DCGM_FI_DEV_GPU_TEMP{job=\"dcgm-exporter\"}",
   "memoryUsedQuery": "DCGM_FI_DEV_FB_USED{job=\"dcgm-exporter\"}",
   "memoryTotalQuery": "DCGM_FI_DEV_FB_USED{job=\"dcgm-exporter\"} + DCGM_FI_DEV_FB_FREE{job=\"dcgm-exporter\"} + DCGM_FI_DEV_FB_RESERVED{job=\"dcgm-exporter\"}",
   "powerQuery": "DCGM_FI_DEV_POWER_USAGE{job=\"dcgm-exporter\"}"
 }
 ```
+
+By default, the collector applies `timestamp(...)` to the effective `gpuQuery` so freshness reflects the underlying utilization sample rather than the instant-query evaluation time. If a custom utilization expression does not preserve source timestamps, set `gpuTimestampQuery` to an instant-vector query that returns each GPU's source timestamp in Unix seconds with matching GPU identity labels.
 
 ### Environment-variable overrides
 
@@ -86,6 +89,7 @@ Environment variables remain available for containers and automated deployments.
 - `PASEO_PROMETHEUS_HOST_LABEL`
 - `PASEO_PROMETHEUS_SHOW_HOST_LABEL_IN_PILL`
 - `PASEO_PROMETHEUS_GPU_QUERY`
+- `PASEO_PROMETHEUS_GPU_TIMESTAMP_QUERY`
 - `PASEO_PROMETHEUS_GPU_TEMPERATURE_QUERY`
 - `PASEO_PROMETHEUS_GPU_MEMORY_USED_QUERY`
 - `PASEO_PROMETHEUS_GPU_MEMORY_TOTAL_QUERY`
