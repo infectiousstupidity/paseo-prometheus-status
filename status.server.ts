@@ -223,26 +223,32 @@ async function collect(): Promise<CollectionResult> {
       queries,
     );
 
-    const [
-      utilizationResults,
-      utilizationTimestampResults,
-      temperatureResults,
-      memoryUsedResults,
-      memoryTotalResults,
-      powerResults,
-    ] = await Promise.all([
-      queryPrometheus(config.prometheusUrl, queries.utilization),
-      queryPrometheus(config.prometheusUrl, queries.utilizationTimestamp),
+    const optionalResultsPromise = Promise.allSettled([
       queryPrometheus(config.prometheusUrl, queries.temperature),
       queryPrometheus(config.prometheusUrl, queries.memoryUsed),
       queryPrometheus(config.prometheusUrl, queries.memoryTotal),
       queryPrometheus(config.prometheusUrl, queries.power),
     ]);
+    const [utilizationResults, utilizationTimestampResults] =
+      await Promise.all([
+        queryPrometheus(config.prometheusUrl, queries.utilization),
+        queryPrometheus(config.prometheusUrl, queries.utilizationTimestamp),
+      ]);
+    const optionalResults = await optionalResultsPromise;
+    const optionalFailures: string[] = [];
+    function optionalValues(
+      result: PromiseSettledResult<PrometheusVectorResult[]>,
+      name: string,
+    ): Map<string, number> {
+      if (result.status === "fulfilled") return valuesByGpu(result.value);
+      optionalFailures.push(name);
+      return new Map();
+    }
+    const temperatures = optionalValues(optionalResults[0], "temperature");
+    const memoryUsed = optionalValues(optionalResults[1], "memory used");
+    const memoryTotal = optionalValues(optionalResults[2], "memory total");
+    const power = optionalValues(optionalResults[3], "power");
     const utilizationTimestamps = valuesByGpu(utilizationTimestampResults);
-    const temperatures = valuesByGpu(temperatureResults);
-    const memoryUsed = valuesByGpu(memoryUsedResults);
-    const memoryTotal = valuesByGpu(memoryTotalResults);
-    const power = valuesByGpu(powerResults);
     const gpusByKey = new Map<
       string,
       {
@@ -343,7 +349,10 @@ async function collect(): Promise<CollectionResult> {
           ...gpus.map(({ utilizationPercent }) => utilizationPercent),
         ),
         sampledAt: new Date(oldestSampleSeconds * 1000).toISOString(),
-        message: null,
+        message:
+          optionalFailures.length > 0
+            ? `Optional Prometheus queries failed: ${optionalFailures.join(", ")}`
+            : null,
       },
       sourceFingerprint,
     };
