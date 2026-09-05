@@ -11,8 +11,7 @@ import {
   type PrometheusSourceConfig,
   type PrometheusVectorResult,
 } from "./status.core";
-import type { GpuStatus } from "./status.shared";
-import type { gpuStatusGet } from "./status.shared";
+import { gpuStatusGet, type GpuStatus } from "./status.shared";
 
 const CONFIG_PATH = join(
   process.env.PASEO_HOME?.trim() || join(homedir(), ".paseo"),
@@ -239,15 +238,27 @@ async function collect(): Promise<CollectionResult> {
     function optionalValues(
       result: PromiseSettledResult<PrometheusVectorResult[]>,
       name: string,
+      isValidValue?: (value: number) => boolean,
     ): Map<string, number> {
-      if (result.status === "fulfilled") return valuesByGpu(result.value);
+      if (result.status === "fulfilled") {
+        return valuesByGpu(result.value, isValidValue);
+      }
       optionalFailures.push(name);
       return new Map();
     }
+    const nonNegative = (value: number) => value >= 0;
     const temperatures = optionalValues(optionalResults[0], "temperature");
-    const memoryUsed = optionalValues(optionalResults[1], "memory used");
-    const memoryTotal = optionalValues(optionalResults[2], "memory total");
-    const power = optionalValues(optionalResults[3], "power");
+    const memoryUsed = optionalValues(
+      optionalResults[1],
+      "memory used",
+      nonNegative,
+    );
+    const memoryTotal = optionalValues(
+      optionalResults[2],
+      "memory total",
+      nonNegative,
+    );
+    const power = optionalValues(optionalResults[3], "power", nonNegative);
     const utilizationTimestamps = valuesByGpu(utilizationTimestampResults);
     const gpusByKey = new Map<
       string,
@@ -320,7 +331,7 @@ async function collect(): Promise<CollectionResult> {
       ...gpus.map(({ sampleSeconds }) => sampleSeconds ?? 0),
     );
     return {
-      status: {
+      status: gpuStatusGet.output.parse({
         status: "ok",
         hostLabel: config.hostLabel,
         showHostLabelInPill: config.showHostLabelInPill,
@@ -353,7 +364,7 @@ async function collect(): Promise<CollectionResult> {
           optionalFailures.length > 0
             ? `Optional Prometheus queries failed: ${optionalFailures.join(", ")}`
             : null,
-      },
+      }),
       sourceFingerprint,
     };
   } catch (error) {
