@@ -110,13 +110,20 @@ export function gpuMetricKey(metric: Record<string, string>): string | null {
 
 export function valuesByGpu(
   results: PrometheusVectorResult[],
+  isValidValue: (value: number) => boolean = () => true,
 ): Map<string, number> {
   const latest = new Map<string, { sampledAt: number; value: number }>();
 
   for (const { metric = {}, value } of results) {
     const key = gpuMetricKey(metric);
     const numericValue = Number(value?.[1]);
-    if (!key || !Number.isFinite(numericValue)) continue;
+    if (
+      !key ||
+      !Number.isFinite(numericValue) ||
+      !isValidValue(numericValue)
+    ) {
+      continue;
+    }
 
     const sampledAt = value?.[0] ?? 0;
     const current = latest.get(key);

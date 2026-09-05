@@ -74,6 +74,19 @@ test("keeps the newest duplicate sample for one GPU", () => {
   assert.equal(values.get("uuid:GPU-a"), 62);
 });
 
+test("filters values outside an optional metric's domain", () => {
+  const values = valuesByGpu(
+    [
+      { metric: { UUID: "GPU-a" }, value: [100, "-1"] },
+      { metric: { UUID: "GPU-b" }, value: [100, "120"] },
+    ],
+    (value) => value >= 0,
+  );
+
+  assert.equal(values.has("uuid:GPU-a"), false);
+  assert.equal(values.get("uuid:GPU-b"), 120);
+});
+
 test("queries source timestamps for the effective utilization metric", () => {
   const queries = buildPrometheusQueries({
     prometheusUrl: "https://metrics.example/prometheus",
