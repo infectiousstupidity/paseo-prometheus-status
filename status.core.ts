@@ -41,14 +41,12 @@ export function buildPrometheusQueries(
       config.temperatureQuery ??
       metric("DCGM_FI_DEV_GPU_TEMP", config.selector),
     memoryUsed:
-      config.memoryUsedQuery ??
-      metric("DCGM_FI_DEV_FB_USED", config.selector),
+      config.memoryUsedQuery ?? metric("DCGM_FI_DEV_FB_USED", config.selector),
     memoryTotal:
       config.memoryTotalQuery ??
       `${metric("DCGM_FI_DEV_FB_USED", config.selector)} + ${metric("DCGM_FI_DEV_FB_FREE", config.selector)} + ${metric("DCGM_FI_DEV_FB_RESERVED", config.selector)}`,
     power:
-      config.powerQuery ??
-      metric("DCGM_FI_DEV_POWER_USAGE", config.selector),
+      config.powerQuery ?? metric("DCGM_FI_DEV_POWER_USAGE", config.selector),
   };
 }
 
@@ -74,7 +72,10 @@ export function buildPrometheusQueryUrl(
   prometheusUrl: string,
   query: string,
 ): URL {
-  const url = new URL("api/v1/query", normalizePrometheusBaseUrl(prometheusUrl));
+  const url = new URL(
+    "api/v1/query",
+    normalizePrometheusBaseUrl(prometheusUrl),
+  );
   url.searchParams.set("query", query);
   return url;
 }
@@ -117,11 +118,7 @@ export function valuesByGpu(
   for (const { metric = {}, value } of results) {
     const key = gpuMetricKey(metric);
     const numericValue = Number(value?.[1]);
-    if (
-      !key ||
-      !Number.isFinite(numericValue) ||
-      !isValidValue(numericValue)
-    ) {
+    if (!key || !Number.isFinite(numericValue) || !isValidValue(numericValue)) {
       continue;
     }
 

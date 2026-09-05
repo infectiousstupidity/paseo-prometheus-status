@@ -228,11 +228,12 @@ async function collect(): Promise<CollectionResult> {
       queryPrometheus(config.prometheusUrl, queries.memoryTotal),
       queryPrometheus(config.prometheusUrl, queries.power),
     ]);
-    const [utilizationResults, utilizationTimestampResults] =
-      await Promise.all([
+    const [utilizationResults, utilizationTimestampResults] = await Promise.all(
+      [
         queryPrometheus(config.prometheusUrl, queries.utilization),
         queryPrometheus(config.prometheusUrl, queries.utilizationTimestamp),
-      ]);
+      ],
+    );
     const optionalResults = await optionalResultsPromise;
     const optionalFailures: string[] = [];
     function optionalValues(
