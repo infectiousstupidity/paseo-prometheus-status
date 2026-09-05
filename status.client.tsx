@@ -449,15 +449,25 @@ export function contributeGpuStatusPills(client: PluginClientContext) {
     else upsert(update.agent);
   });
 
-  void client.paseo.agents
-    .list({ scope: "active", page: { limit: 500 } })
-    .then(({ entries }) => {
+  void (async () => {
+    let cursor: string | undefined;
+    do {
+      const { entries, pageInfo } = await client.paseo.agents.list({
+        scope: "active",
+        page: { limit: 200, cursor },
+      });
       if (stopped) return;
       for (const { agent } of entries) upsert(agent);
-    })
-    .catch((error: unknown) => {
-      console.error("Could not initialize Prometheus status pills", error);
-    });
+
+      if (!pageInfo.hasMore) return;
+      if (!pageInfo.nextCursor) {
+        throw new Error("Agent list has more pages but no next cursor");
+      }
+      cursor = pageInfo.nextCursor;
+    } while (!stopped);
+  })().catch((error: unknown) => {
+    console.error("Could not initialize Prometheus status pills", error);
+  });
 
   return () => {
     stopped = true;
