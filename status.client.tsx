@@ -297,12 +297,9 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
   const status = query.data;
   const state = displayState(status, query.isError);
   const presentation = statusPresentation(state.kind, theme);
-  const errorMessage =
-    status?.status === "unavailable"
-      ? status.message
-      : query.error instanceof Error
-        ? query.error.message
-        : null;
+  const statusMessage =
+    status?.message ??
+    (query.error instanceof Error ? query.error.message : null);
 
   return (
     <ScrollView
@@ -360,9 +357,17 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
           </View>
         </View>
 
-        {errorMessage ? (
-          <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>
-            {errorMessage}
+        {statusMessage ? (
+          <Text
+            style={{
+              color:
+                status?.status === "ok"
+                  ? theme.colors.statusWarning
+                  : theme.colors.statusDanger,
+              fontSize: 13,
+            }}
+          >
+            {statusMessage}
           </Text>
         ) : null}
 
