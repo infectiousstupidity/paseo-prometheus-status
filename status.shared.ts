@@ -12,6 +12,22 @@ const gpu = z.object({
   powerWatts: z.number().min(0).nullable(),
 });
 
+const gpuStatusConfigState = z.object({
+  configPath: z.string(),
+  prometheusUrl: z.string(),
+  selector: z.string(),
+  hostLabel: z.string(),
+  showHostLabelInPill: z.boolean(),
+  gpuQuery: z.string(),
+  gpuTimestampQuery: z.string(),
+  temperatureQuery: z.string(),
+  memoryUsedQuery: z.string(),
+  memoryTotalQuery: z.string(),
+  powerQuery: z.string(),
+  envOverrides: z.array(z.string()),
+  fileValid: z.boolean(),
+});
+
 export const gpuStatusGet = defineRpc({
   name: "gpu-status.get",
   input: z.object({}),
@@ -26,4 +42,30 @@ export const gpuStatusGet = defineRpc({
   }),
 });
 
+export const gpuStatusConfigGet = defineRpc({
+  name: "gpu-status.config.get",
+  input: z.object({}),
+  output: gpuStatusConfigState,
+});
+
+export const gpuStatusConfigSave = defineRpc({
+  name: "gpu-status.config.save",
+  input: z.object({
+    prometheusUrl: z.string(),
+    selector: z.string(),
+    hostLabel: z.string(),
+    showHostLabelInPill: z.boolean(),
+    gpuQuery: z.string(),
+    gpuTimestampQuery: z.string(),
+    temperatureQuery: z.string(),
+    memoryUsedQuery: z.string(),
+    memoryTotalQuery: z.string(),
+    powerQuery: z.string(),
+  }),
+  output: gpuStatusConfigState.extend({
+    replacedInvalidFile: z.boolean(),
+  }),
+});
+
 export type GpuStatus = z.output<typeof gpuStatusGet.output>;
+export type GpuStatusConfig = z.output<typeof gpuStatusConfigGet.output>;
