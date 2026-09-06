@@ -20,8 +20,8 @@
     "eslint-plugin-unicorn": "74.0.0",
     "oxfmt": "0.66.0",
     "oxlint": "1.81.0",
-    "react": "19.1.0",
-    "react-native": "0.81.5",
+    "react": "19.2.8",
+    "react-native": "0.87.1",
     "typescript": "^7.0.2",
     "zod": "^4.5.4"
   }
