@@ -1,10 +1,20 @@
 # Paseo Prometheus Status
 
-A Paseo v0.7 plugin that shows the highest GPU utilization and temperature from Prometheus in every active agent composer. Press the pill to open a compact per-GPU inspector with utilization, temperature, VRAM, and power.
+A Paseo v0.7 plugin that shows the highest GPU utilization and temperature from Prometheus in every active agent composer. Press the pill to open a per-GPU view with utilization, temperature, VRAM, and power.
+
+## Install
+
+Install directly from GitHub. No `npm install` is needed for normal use.
+
+```bash
+paseo plugin add infectiousstupidity/paseo-prometheus-status
+```
+
+Then configure the Prometheus connection as described below.
 
 ## Preview
 
-The composer pill keeps the busiest utilization and hottest temperature visible at a glance. Click it to open the full inspector.
+The composer pill keeps the busiest GPU utilization and highest temperature visible at a glance. Click it to open the full view.
 
 ![GPU status pill in the Paseo composer](docs/images/composer-pill.png)
 
@@ -14,18 +24,18 @@ The status pane shows utilization, temperature, VRAM, and power for each GPU.
 
 ## Data source
 
-Prometheus is the only data source. The plugin queries these NVIDIA DCGM exporter metrics:
+Prometheus is the only data source. By default, the plugin reads these NVIDIA DCGM Exporter metrics:
 
 - `DCGM_FI_DEV_GPU_UTIL`
 - `DCGM_FI_DEV_GPU_TEMP`
 - `DCGM_FI_DEV_FB_USED`, `DCGM_FI_DEV_FB_FREE`, and `DCGM_FI_DEV_FB_RESERVED`
 - `DCGM_FI_DEV_POWER_USAGE`
 
-The plugin connects only to the configured Prometheus endpoint and does not connect directly to GPU hosts.
+The plugin connects only to the configured Prometheus endpoint. It does not connect directly to GPU hosts.
 
 ## Configuration
 
-The plugin automatically creates `paseo-prometheus-status.json` in the Paseo home directory the first time it requests GPU status. The default locations are:
+The plugin creates `paseo-prometheus-status.json` in the Paseo home directory the first time it requests GPU status.
 
 - Windows: `%USERPROFILE%\.paseo\paseo-prometheus-status.json`
 - macOS and Linux: `~/.paseo/paseo-prometheus-status.json`
@@ -42,7 +52,9 @@ The generated file looks like this:
 }
 ```
 
-Set `prometheusUrl` to the HTTP or HTTPS Prometheus base URL visible from the Paseo daemon. Path-prefixed installations are supported, for example `https://metrics.example/prometheus`. Set `selector` to the contents of a PromQL label selector that identifies the intended DCGM exporter or GPU host; do not include the surrounding braces:
+Set `prometheusUrl` to the HTTP or HTTPS Prometheus base URL that the Paseo daemon can reach. Path-prefixed Prometheus installations are supported, for example `https://metrics.example/prometheus`.
+
+Set `selector` to the Prometheus labels that identify the intended DCGM Exporter or GPU host. Do not include the surrounding braces.
 
 ```json
 {
@@ -61,11 +73,11 @@ After saving the file, reload the plugin:
 paseo plugin reload paseo-prometheus-status
 ```
 
-The file is also reread whenever the plugin refreshes its 10-second cache, so most saved changes appear automatically within 10 seconds. Reloading applies them immediately. Invalid JSON or invalid value types are shown as an unavailable state with the configuration error.
+The plugin rereads the file when its 10-second cache refreshes, so most changes appear automatically within 10 seconds. Reloading applies them immediately. Invalid JSON or invalid value types are shown as unavailable with the configuration error.
 
-### Advanced query overrides
+### Custom queries
 
-The selector is inserted between `{` and `}` in every default query. Advanced users can replace individual complete PromQL queries by adding any of these optional properties to the JSON object:
+The selector is inserted between `{` and `}` in every default query. You can replace individual Prometheus queries by adding any of these optional properties:
 
 ```json
 {
@@ -78,11 +90,11 @@ The selector is inserted between `{` and `}` in every default query. Advanced us
 }
 ```
 
-By default, the collector applies `timestamp(...)` to the effective `gpuQuery` so freshness reflects the underlying utilization sample rather than the instant-query evaluation time. If a custom utilization expression does not preserve source timestamps, set `gpuTimestampQuery` to an instant-vector query that returns each GPU's source timestamp in Unix seconds with matching GPU identity labels.
+By default, the plugin uses `timestamp(...)` around the effective `gpuQuery` so freshness reflects the source metric time rather than the time Prometheus answered the query. If a custom utilization query changes that behavior, set `gpuTimestampQuery` to a query that returns each GPU's source timestamp in Unix seconds with the same GPU identity labels.
 
-### Environment-variable overrides
+### Environment variables
 
-Environment variables remain available for containers and automated deployments. They override matching values from the JSON file:
+Environment variables are available for containers and automated deployments. They override matching values from the JSON file:
 
 - `PASEO_PROMETHEUS_URL`
 - `PASEO_PROMETHEUS_SELECTOR`
@@ -95,9 +107,25 @@ Environment variables remain available for containers and automated deployments.
 - `PASEO_PROMETHEUS_GPU_MEMORY_TOTAL_QUERY`
 - `PASEO_PROMETHEUS_GPU_POWER_QUERY`
 
-Environment-variable changes require restarting the Paseo daemon so the plugin process inherits them. JSON-file changes do not.
+Restart the Paseo daemon after changing environment variables. Changes to the JSON file do not require a restart.
 
-The collector and clients refresh every 10 seconds. A sample older than 30 seconds is shown as stale. A missing or unreachable Prometheus URL is shown as offline in the plugin UI.
+The plugin refreshes every 10 seconds. A sample older than 30 seconds is shown as stale. A missing or unreachable Prometheus URL is shown as offline.
+
+## Security
+
+The server part of this plugin runs with the same permissions as the Paseo daemon. It writes one configuration file and makes HTTP or HTTPS requests to the configured `prometheusUrl`. It does not run shell commands or connect directly to GPU hosts.
+
+Use HTTPS when Prometheus traffic crosses a network you do not trust. The plugin does not support custom authentication headers, so do not put API tokens or passwords in this repository. Credentials placed directly in `prometheusUrl` are stored as plain text in the configuration file.
+
+On macOS and Linux, a newly created configuration file is limited to the current user with mode `0600`. Windows handles file permissions differently, so normal Windows account permissions apply there.
+
+## Known limitations
+
+- One Prometheus endpoint and selector can be configured per plugin installation.
+- The default queries expect NVIDIA DCGM Exporter metric names. Other GPU exporters need custom queries.
+- Prometheus authentication headers and bearer tokens are not supported.
+- Status updates every 10 seconds, so the UI is not a real-time GPU monitor.
+- Freshness is based on the GPU utilization sample. Optional temperature, memory, or power queries can fail without hiding utilization data.
 
 ## Development
 
@@ -115,3 +143,7 @@ npm run typecheck
 npm test
 paseo plugin reload paseo-prometheus-status
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
