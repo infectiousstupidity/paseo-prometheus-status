@@ -5,9 +5,20 @@ import {
   useRpc,
 } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/react-native";
-import { useQuery } from "@tanstack/react-query";
-import { ScrollView, Text, View } from "react-native";
-import { gpuStatusGet, type GpuStatus } from "./status.shared";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  gpuStatusConfigGet,
+  gpuStatusConfigSave,
+  gpuStatusGet,
+  type GpuStatus,
+  type GpuStatusConfig,
+} from "./status.shared";
 
 const REFRESH_INTERVAL_MS = 10_000;
 const STALE_AFTER_SECONDS = 30;
@@ -23,6 +34,33 @@ type DisplayKind =
   | "stale"
   | "offline";
 
+type ConfigValues = Pick<
+  GpuStatusConfig,
+  | "prometheusUrl"
+  | "selector"
+  | "hostLabel"
+  | "showHostLabelInPill"
+  | "gpuQuery"
+  | "gpuTimestampQuery"
+  | "temperatureQuery"
+  | "memoryUsedQuery"
+  | "memoryTotalQuery"
+  | "powerQuery"
+>;
+
+const EMPTY_CONFIG: ConfigValues = {
+  prometheusUrl: "",
+  selector: "",
+  hostLabel: "GPU host",
+  showHostLabelInPill: false,
+  gpuQuery: "",
+  gpuTimestampQuery: "",
+  temperatureQuery: "",
+  memoryUsedQuery: "",
+  memoryTotalQuery: "",
+  powerQuery: "",
+};
+
 function ageInSeconds(sampledAt: string | null): number | null {
   if (!sampledAt) return null;
   return Math.max(0, Math.round((Date.now() - Date.parse(sampledAt)) / 1000));
@@ -31,11 +69,20 @@ function ageInSeconds(sampledAt: string | null): number | null {
 function useGpuStatus(hostId: string) {
   const getStatus = useRpc(gpuStatusGet);
   return useQuery({
-    queryKey: ["paseo-prometheus-status", hostId],
+    queryKey: ["paseo-prometheus-status", "status", hostId],
     queryFn: () => getStatus({}),
     refetchInterval: REFRESH_INTERVAL_MS,
     staleTime: REFRESH_INTERVAL_MS - 1,
     retry: 1,
+  });
+}
+
+function useGpuConfig(hostId: string) {
+  const getConfig = useRpc(gpuStatusConfigGet);
+  return useQuery({
+    queryKey: ["paseo-prometheus-status", "config", hostId],
+    queryFn: () => getConfig({}),
+    staleTime: REFRESH_INTERVAL_MS,
   });
 }
 
@@ -246,6 +293,403 @@ function GpuCard({
   );
 }
 
+function ConfigField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  theme,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  theme: PluginAgentPanelProps["theme"];
+  multiline?: boolean;
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text
+        style={{
+          color: theme.colors.foregroundMuted,
+          fontSize: 12,
+          fontWeight: "600",
+        }}
+      >
+        {label}
+      </Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={theme.colors.foregroundMuted}
+        autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        multiline={multiline}
+        style={{
+          color: theme.colors.foreground,
+          minHeight: multiline ? 72 : 40,
+          paddingHorizontal: 12,
+          paddingVertical: multiline ? 10 : 8,
+          borderColor: theme.colors.border,
+          borderRadius: 8,
+          borderWidth: 1,
+          backgroundColor: theme.colors.surface0,
+          fontSize: 13,
+          textAlignVertical: multiline ? "top" : "center",
+        }}
+      />
+    </View>
+  );
+}
+
+function ConfigForm({
+  hostId,
+  theme,
+}: {
+  hostId: string;
+  theme: PluginAgentPanelProps["theme"];
+}) {
+  const queryClient = useQueryClient();
+  const getConfig = useRpc(gpuStatusConfigGet);
+  const saveConfig = useRpc(gpuStatusConfigSave);
+  const config = useQuery({
+    queryKey: ["paseo-prometheus-status", "config", hostId],
+    queryFn: () => getConfig({}),
+    staleTime: REFRESH_INTERVAL_MS,
+  });
+  const [values, setValues] = useState<ConfigValues>(EMPTY_CONFIG);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [note, setNote] = useState<{
+    text: string;
+    tone: "success" | "danger";
+  } | null>(null);
+  const prefilled = useRef(false);
+
+  useEffect(() => {
+    if (config.data === undefined || prefilled.current) return;
+    prefilled.current = true;
+    const {
+      prometheusUrl,
+      selector,
+      hostLabel,
+      showHostLabelInPill,
+      gpuQuery,
+      gpuTimestampQuery,
+      temperatureQuery,
+      memoryUsedQuery,
+      memoryTotalQuery,
+      powerQuery,
+    } = config.data;
+    setValues({
+      prometheusUrl,
+      selector,
+      hostLabel,
+      showHostLabelInPill,
+      gpuQuery,
+      gpuTimestampQuery,
+      temperatureQuery,
+      memoryUsedQuery,
+      memoryTotalQuery,
+      powerQuery,
+    });
+    setAdvancedOpen(
+      [
+        gpuQuery,
+        gpuTimestampQuery,
+        temperatureQuery,
+        memoryUsedQuery,
+        memoryTotalQuery,
+        powerQuery,
+      ].some((value) => value !== ""),
+    );
+  }, [config.data]);
+
+  function setField<Key extends keyof ConfigValues>(
+    key: Key,
+    value: ConfigValues[Key],
+  ) {
+    setValues((current) => ({ ...current, [key]: value }));
+    setNote(null);
+  }
+
+  const save = useMutation({
+    mutationFn: () => saveConfig(values),
+    onSuccess: (result) => {
+      queryClient.setQueryData(
+        ["paseo-prometheus-status", "config", hostId],
+        result,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["paseo-prometheus-status", "status", hostId],
+      });
+      setNote({
+        text: result.replacedInvalidFile
+          ? "Saved. The invalid config file was replaced."
+          : "Saved.",
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      setNote({
+        text:
+          error instanceof Error
+            ? error.message
+            : "Could not save Prometheus settings.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const envOverrides = config.data?.envOverrides ?? [];
+
+  return (
+    <View
+      style={{
+        gap: 16,
+        padding: 16,
+        borderColor: theme.colors.border,
+        borderRadius: 12,
+        borderWidth: 1,
+        backgroundColor: theme.colors.surface1,
+      }}
+    >
+      <View style={{ gap: 4 }}>
+        <Text
+          style={{
+            color: theme.colors.foreground,
+            fontSize: 15,
+            fontWeight: "600",
+          }}
+        >
+          Settings
+        </Text>
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+          Configure the Prometheus connection used by this Paseo daemon.
+        </Text>
+      </View>
+
+      {config.isError ? (
+        <Text style={{ color: theme.colors.statusDanger, fontSize: 12 }}>
+          Could not read the plugin settings.
+        </Text>
+      ) : null}
+
+      {config.data?.fileValid === false ? (
+        <Text style={{ color: theme.colors.statusWarning, fontSize: 12 }}>
+          The current config file is invalid. Saving here will replace it.
+        </Text>
+      ) : null}
+
+      <ConfigField
+        label="Prometheus URL"
+        value={values.prometheusUrl}
+        onChangeText={(value) => setField("prometheusUrl", value)}
+        placeholder="http://prometheus.example:9090"
+        theme={theme}
+      />
+      <ConfigField
+        label="Metric selector"
+        value={values.selector}
+        onChangeText={(value) => setField("selector", value)}
+        placeholder={'job="dcgm-exporter",instance="gpu-host:9400"'}
+        theme={theme}
+      />
+      <ConfigField
+        label="Host label"
+        value={values.hostLabel}
+        onChangeText={(value) => setField("hostLabel", value)}
+        placeholder="GPU host"
+        theme={theme}
+      />
+
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text
+            style={{
+              color: theme.colors.foreground,
+              fontSize: 13,
+              fontWeight: "600",
+            }}
+          >
+            Show host label in composer
+          </Text>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+            Keep it off for the shortest GPU status pill.
+          </Text>
+        </View>
+        <Pressable
+          accessibilityRole="switch"
+          accessibilityState={{ checked: values.showHostLabelInPill }}
+          onPress={() =>
+            setField("showHostLabelInPill", !values.showHostLabelInPill)
+          }
+          style={({ pressed }) => ({
+            minWidth: 64,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderColor: theme.colors.border,
+            borderRadius: 8,
+            borderWidth: 1,
+            backgroundColor: theme.colors.surface0,
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <Text
+            style={{
+              color: theme.colors.foreground,
+              fontSize: 12,
+              fontWeight: "600",
+              textAlign: "center",
+            }}
+          >
+            {values.showHostLabelInPill ? "On" : "Off"}
+          </Text>
+        </Pressable>
+      </View>
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setAdvancedOpen((open) => !open)}
+        style={({ pressed }) => ({
+          alignSelf: "flex-start",
+          paddingVertical: 4,
+          opacity: pressed ? 0.65 : 1,
+        })}
+      >
+        <Text
+          style={{
+            color: theme.colors.foregroundMuted,
+            fontSize: 12,
+            fontWeight: "600",
+          }}
+        >
+          {advancedOpen ? "Hide advanced queries" : "Advanced queries"}
+        </Text>
+      </Pressable>
+
+      {advancedOpen ? (
+        <View style={{ gap: 12 }}>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
+            Leave a query blank to use the built-in DCGM query.
+          </Text>
+          <ConfigField
+            label="GPU utilization query"
+            value={values.gpuQuery}
+            onChangeText={(value) => setField("gpuQuery", value)}
+            placeholder="Use built-in query"
+            theme={theme}
+            multiline
+          />
+          <ConfigField
+            label="Sample timestamp query"
+            value={values.gpuTimestampQuery}
+            onChangeText={(value) => setField("gpuTimestampQuery", value)}
+            placeholder="Use timestamp of utilization query"
+            theme={theme}
+            multiline
+          />
+          <ConfigField
+            label="Temperature query"
+            value={values.temperatureQuery}
+            onChangeText={(value) => setField("temperatureQuery", value)}
+            placeholder="Use built-in query"
+            theme={theme}
+            multiline
+          />
+          <ConfigField
+            label="VRAM used query"
+            value={values.memoryUsedQuery}
+            onChangeText={(value) => setField("memoryUsedQuery", value)}
+            placeholder="Use built-in query"
+            theme={theme}
+            multiline
+          />
+          <ConfigField
+            label="VRAM total query"
+            value={values.memoryTotalQuery}
+            onChangeText={(value) => setField("memoryTotalQuery", value)}
+            placeholder="Use built-in query"
+            theme={theme}
+            multiline
+          />
+          <ConfigField
+            label="Power query"
+            value={values.powerQuery}
+            onChangeText={(value) => setField("powerQuery", value)}
+            placeholder="Use built-in query"
+            theme={theme}
+            multiline
+          />
+        </View>
+      ) : null}
+
+      {envOverrides.length > 0 ? (
+        <Text style={{ color: theme.colors.statusWarning, fontSize: 12 }}>
+          Environment variables override saved settings: {envOverrides.join(", ")}
+        </Text>
+      ) : null}
+
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={save.isPending}
+          onPress={() => save.mutate()}
+          style={({ pressed }) => ({
+            paddingHorizontal: 14,
+            paddingVertical: 9,
+            borderRadius: 8,
+            backgroundColor: theme.colors.foreground,
+            opacity: pressed || save.isPending ? 0.65 : 1,
+          })}
+        >
+          <Text
+            style={{
+              color: theme.colors.surface0,
+              fontSize: 12,
+              fontWeight: "600",
+            }}
+          >
+            {save.isPending ? "Saving…" : "Save settings"}
+          </Text>
+        </Pressable>
+        {note ? (
+          <Text
+            style={{
+              color:
+                note.tone === "success"
+                  ? theme.colors.foregroundMuted
+                  : theme.colors.statusDanger,
+              flexShrink: 1,
+              fontSize: 12,
+            }}
+          >
+            {note.text}
+          </Text>
+        ) : null}
+      </View>
+
+      {config.data?.configPath ? (
+        <Text
+          selectable
+          style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}
+        >
+          {config.data.configPath}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export function GpuStatusPill({ theme, host }: PluginComposerPillProps) {
   const query = useGpuStatus(host.id);
   const { kind, maxTemperature, utilization } = displayState(
@@ -294,12 +738,18 @@ export function GpuStatusPill({ theme, host }: PluginComposerPillProps) {
 
 export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
   const query = useGpuStatus(host.id);
+  const config = useGpuConfig(host.id);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const status = query.data;
   const state = displayState(status, query.isError);
   const presentation = statusPresentation(state.kind, theme);
   const statusMessage =
     status?.message ??
     (query.error instanceof Error ? query.error.message : null);
+  const forceSettings =
+    config.data !== undefined &&
+    (!config.data.fileValid || config.data.prometheusUrl.trim() === "");
+  const showSettings = forceSettings || settingsOpen;
 
   return (
     <ScrollView
@@ -336,24 +786,52 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
               GPU status
             </Text>
           </View>
-          <View style={{ alignItems: "flex-end", gap: 4 }}>
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-            >
-              <Text style={{ color: presentation.color, fontSize: 11 }}>●</Text>
-              <Text
-                style={{
-                  color: presentation.color,
-                  fontSize: 13,
-                  fontWeight: "600",
-                }}
+          <View style={{ alignItems: "flex-end", gap: 8 }}>
+            <View style={{ alignItems: "flex-end", gap: 4 }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
               >
-                {presentation.label}
+                <Text style={{ color: presentation.color, fontSize: 11 }}>●</Text>
+                <Text
+                  style={{
+                    color: presentation.color,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  {presentation.label}
+                </Text>
+              </View>
+              <Text
+                style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}
+              >
+                {formatAge(state.age)}
               </Text>
             </View>
-            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-              {formatAge(state.age)}
-            </Text>
+            {!forceSettings ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setSettingsOpen((open) => !open)}
+                style={({ pressed }) => ({
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderColor: theme.colors.border,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  opacity: pressed ? 0.65 : 1,
+                })}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.foregroundMuted,
+                    fontSize: 12,
+                    fontWeight: "600",
+                  }}
+                >
+                  {settingsOpen ? "Close settings" : "Settings"}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
 
@@ -370,6 +848,8 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
             {statusMessage}
           </Text>
         ) : null}
+
+        {showSettings ? <ConfigForm hostId={host.id} theme={theme} /> : null}
 
         {(status?.gpus.length ?? 0) > 0 ? (
           <View
