@@ -2,7 +2,7 @@ import unicorn from "eslint-plugin-unicorn";
 import { defineConfig } from "oxlint";
 
 const unicornRecommendedRules = Object.fromEntries(
-  Object.entries(unicorn.configs.recommended.rules).map(
+  Object.entries(unicorn.configs.recommended.rules ?? {}).map(
     ([ruleName, ruleConfig]) => [
       ruleName.startsWith("unicorn/")
         ? ruleName.replace(/^unicorn\//, "unicorn-js/")
@@ -21,5 +21,11 @@ export default defineConfig({
     },
   ],
   ignorePatterns: ["dist/**", "coverage/**", ".test-dist/**"],
-  rules: unicornRecommendedRules,
+  rules: {
+    ...unicornRecommendedRules,
+    // Explicit null is part of the normalized RPC/upstream data model.
+    "unicorn-js/no-null": "off",
+    // Prometheus is commonly served over plain http on the local network.
+    "unicorn-js/prefer-https": "off",
+  },
 });
