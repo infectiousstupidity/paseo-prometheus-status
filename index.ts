@@ -1,5 +1,6 @@
 import type { PluginContext } from "@getpaseo/plugin";
-import { contributeGpuStatusPills, GpuStatusPanel } from "./status.client";
+import { contributeGpuAlertPills } from "./gpu-alert.client";
+import { GpuStatusPanel } from "./status.client";
 import {
   describeGpuStatusConfig,
   getGpuStatus,
@@ -23,6 +24,16 @@ export default function contribute(plugin: PluginContext) {
     locations: ["workspace", "explorer"],
     Component: GpuStatusPanel,
   });
-  plugin.addClientSide(contributeGpuStatusPills);
+  plugin.addCommandCenterItem({
+    id: "open-gpu-status",
+    title: "Open GPU status",
+    icon: "Gauge",
+    context: "agent",
+    keywords: ["gpu", "temperature", "prometheus"],
+    onSelect({ openPanel }) {
+      openPanel("gpu-status");
+    },
+  });
+  plugin.addClientSide(contributeGpuAlertPills);
   return () => {};
 }
