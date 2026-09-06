@@ -2,14 +2,11 @@ import {
   type PluginAgentPanelProps,
   type PluginClientContext,
   type PluginComposerPillProps,
+  type PluginTheme,
   useRpc,
 } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/react-native";
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import {
@@ -86,7 +83,7 @@ function useGpuConfig(hostId: string) {
   });
 }
 
-function displayState(status: GpuStatus | undefined, queryFailed = false) {
+function displayState(status: GpuStatus | undefined, isQueryFailed = false) {
   const age = ageInSeconds(status?.sampledAt ?? null);
   const utilization = status?.maxUtilizationPercent ?? null;
   const temperatures = (status?.gpus ?? [])
@@ -96,7 +93,7 @@ function displayState(status: GpuStatus | undefined, queryFailed = false) {
     temperatures.length > 0 ? Math.max(...temperatures) : null;
 
   let kind: DisplayKind;
-  if (queryFailed || status?.status === "unavailable") kind = "offline";
+  if (isQueryFailed || status?.status === "unavailable") kind = "offline";
   else if (!status) kind = "connecting";
   else if (age !== null && age > STALE_AFTER_SECONDS) kind = "stale";
   else if (maxTemperature !== null && maxTemperature >= HOT_TEMPERATURE_CELSIUS)
@@ -141,7 +138,113 @@ function statusPresentation(
     return { label: "Warm", color: theme.colors.statusWarning };
   if (kind === "connecting")
     return { label: "Connecting", color: theme.colors.foregroundMuted };
-  return { label: "Healthy", color: theme.colors.foregroundMuted };
+  return { label: "Healthy", color: theme.colors.statusSuccess };
+}
+
+function pillColor(kind: DisplayKind, colors: PluginTheme["colors"]): string {
+  if (kind === "hot" || kind === "offline") return colors.statusDanger;
+  if (kind === "warm" || kind === "stale") return colors.statusWarning;
+  return colors.foregroundMuted;
+}
+
+function temperatureColor(
+  temperatureCelsius: number | null,
+  colors: PluginTheme["colors"],
+): string {
+  if (
+    temperatureCelsius !== null &&
+    temperatureCelsius >= HOT_TEMPERATURE_CELSIUS
+  ) {
+    return colors.statusDanger;
+  }
+  if (
+    temperatureCelsius !== null &&
+    temperatureCelsius >= WARM_TEMPERATURE_CELSIUS
+  ) {
+    return colors.statusWarning;
+  }
+  return colors.foreground;
+}
+
+function StatusChip({
+  label,
+  color,
+  tooltipText,
+  theme,
+}: {
+  label: string;
+  color: string;
+  tooltipText: string | null;
+  theme: PluginAgentPanelProps["theme"];
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <View
+      accessible
+      accessibilityLabel={
+        tooltipText === null ? label : `${label} — ${tooltipText}`
+      }
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+      style={{ position: "relative" }}
+    >
+      <View
+        style={{
+          alignItems: "center",
+          backgroundColor: theme.colors.surface1,
+          borderColor: color,
+          borderRadius: 999,
+          borderWidth: 1,
+          flexDirection: "row",
+          gap: 6,
+          paddingHorizontal: 9,
+          paddingVertical: 4,
+        }}
+      >
+        <View
+          style={{
+            aspectRatio: 1,
+            backgroundColor: color,
+            borderRadius: 999,
+            height: 7,
+          }}
+        />
+        <Text style={{ color, fontSize: 12, fontWeight: "600" }}>{label}</Text>
+      </View>
+      {hovered && tooltipText !== null ? (
+        <View
+          pointerEvents="none"
+          style={{
+            // Below the chip: the chip sits in the panel's first row, so an
+            // upward tooltip would be clipped by the panel's scroll bounds.
+            backgroundColor: theme.colors.surface2,
+            borderColor: theme.colors.border,
+            borderRadius: 8,
+            borderWidth: 1,
+            marginTop: 6,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            position: "absolute",
+            right: 0,
+            top: "100%",
+            boxShadow: "0 6px 18px rgba(0, 0, 0, 0.28)",
+            zIndex: 100,
+          }}
+        >
+          <Text
+            style={{
+              color: theme.colors.foreground,
+              fontSize: 12,
+              fontWeight: "600",
+            }}
+          >
+            {tooltipText}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 function GpuCard({
@@ -153,17 +256,6 @@ function GpuCard({
   theme: PluginAgentPanelProps["theme"];
   compact: boolean;
 }) {
-  const temperatureAbnormal =
-    gpu.temperatureCelsius !== null &&
-    gpu.temperatureCelsius >= WARM_TEMPERATURE_CELSIUS;
-  const temperatureColor =
-    gpu.temperatureCelsius !== null &&
-    gpu.temperatureCelsius >= HOT_TEMPERATURE_CELSIUS
-      ? theme.colors.statusDanger
-      : temperatureAbnormal
-        ? theme.colors.statusWarning
-        : theme.colors.foreground;
-
   return (
     <View
       style={{
@@ -227,7 +319,7 @@ function GpuCard({
         <View style={{ flex: 1, gap: 2, alignItems: "flex-end" }}>
           <Text
             style={{
-              color: temperatureColor,
+              color: temperatureColor(gpu.temperatureCelsius, theme.colors),
               fontSize: compact ? 30 : 36,
               fontWeight: "600",
               fontVariant: ["tabular-nums"],
@@ -443,7 +535,7 @@ function ConfigForm({
     },
   });
 
-  const envOverrides = config.data?.envOverrides ?? [];
+  const environmentOverrides = config.data?.envOverrides ?? [];
 
   return (
     <View
@@ -487,7 +579,7 @@ function ConfigForm({
         label="Prometheus URL"
         value={values.prometheusUrl}
         onChangeText={(value) => setField("prometheusUrl", value)}
-        placeholder="http://prometheus.example:9090"
+        placeholder="https://prometheus.example:9090"
         theme={theme}
       />
       <ConfigField
@@ -633,9 +725,10 @@ function ConfigForm({
         </View>
       ) : null}
 
-      {envOverrides.length > 0 ? (
+      {environmentOverrides.length > 0 ? (
         <Text style={{ color: theme.colors.statusWarning, fontSize: 12 }}>
-          Environment variables override saved settings: {envOverrides.join(", ")}
+          Environment variables override saved settings:{" "}
+          {environmentOverrides.join(", ")}
         </Text>
       ) : null}
 
@@ -696,25 +789,30 @@ export function GpuStatusPill({ theme, host }: PluginComposerPillProps) {
     query.data,
     query.isError,
   );
-  const abnormal = kind === "offline" || kind === "hot";
-  const warning = kind === "stale" || kind === "warm";
-  const color = abnormal
-    ? theme.colors.statusDanger
-    : warning
-      ? theme.colors.statusWarning
-      : theme.colors.foregroundMuted;
+  const color = pillColor(kind, theme.colors);
 
   const hostLabel = query.data?.hostLabel ?? "GPU host";
   const prefix =
     query.data?.showHostLabelInPill === false ? "" : `${hostLabel} · `;
   let label: string;
-  if (kind === "connecting") label = `${prefix}Connecting…`;
-  else if (kind === "offline") label = `${prefix}Offline`;
-  else if (kind === "stale") label = `${prefix}Stale`;
-  else {
-    const temperature =
-      maxTemperature === null ? "—" : `${Math.round(maxTemperature)}°C`;
-    label = `${prefix}GPU ${Math.round(utilization ?? 0)}% · ${temperature}`;
+  switch (kind) {
+    case "connecting": {
+      label = `${prefix}Connecting…`;
+      break;
+    }
+    case "offline": {
+      label = `${prefix}Offline`;
+      break;
+    }
+    case "stale": {
+      label = `${prefix}Stale`;
+      break;
+    }
+    default: {
+      const temperature =
+        maxTemperature === null ? "—" : `${Math.round(maxTemperature)}°C`;
+      label = `${prefix}GPU ${Math.round(utilization ?? 0)}% · ${temperature}`;
+    }
   }
 
   return (
@@ -746,10 +844,12 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
   const statusMessage =
     status?.message ??
     (query.error instanceof Error ? query.error.message : null);
-  const forceSettings =
+  const isForceSettings =
     config.data !== undefined &&
     (!config.data.fileValid || config.data.prometheusUrl.trim() === "");
-  const showSettings = forceSettings || settingsOpen;
+  const showSettings = isForceSettings || settingsOpen;
+
+  const tooltipText = state.age === null ? null : formatAge(state.age);
 
   return (
     <ScrollView
@@ -766,10 +866,10 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
       >
         <View
           style={{
-            flexDirection: "row",
+            flexDirection: layout.compact ? "column" : "row",
+            alignItems: layout.compact ? "flex-start" : "center",
             justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 20,
+            gap: layout.compact ? 10 : 16,
           }}
         >
           <View style={{ gap: 3 }}>
@@ -783,55 +883,51 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
               {status?.hostLabel ?? "GPU host"}
             </Text>
             <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>
-              GPU status
+              GPU status · {host.label}
             </Text>
           </View>
-          <View style={{ alignItems: "flex-end", gap: 8 }}>
-            <View style={{ alignItems: "flex-end", gap: 4 }}>
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-              >
-                <Text style={{ color: presentation.color, fontSize: 11 }}>●</Text>
-                <Text
-                  style={{
-                    color: presentation.color,
-                    fontSize: 13,
-                    fontWeight: "600",
-                  }}
-                >
-                  {presentation.label}
-                </Text>
-              </View>
-              <Text
-                style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}
-              >
-                {formatAge(state.age)}
-              </Text>
-            </View>
-            {!forceSettings ? (
+          <View
+            style={{
+              alignItems: "center",
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: 10,
+            }}
+          >
+            <StatusChip
+              label={presentation.label}
+              color={presentation.color}
+              tooltipText={tooltipText}
+              theme={theme}
+            />
+            {isForceSettings ? null : (
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={
+                  settingsOpen ? "Close settings" : "Settings"
+                }
                 onPress={() => setSettingsOpen((open) => !open)}
                 style={({ pressed }) => ({
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
+                  backgroundColor: theme.colors.surface2,
                   borderColor: theme.colors.border,
                   borderRadius: 8,
                   borderWidth: 1,
-                  opacity: pressed ? 0.65 : 1,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  opacity: pressed ? 0.85 : 1,
                 })}
               >
                 <Text
                   style={{
-                    color: theme.colors.foregroundMuted,
-                    fontSize: 12,
+                    color: theme.colors.foreground,
+                    fontSize: 13,
                     fontWeight: "600",
                   }}
                 >
                   {settingsOpen ? "Close settings" : "Settings"}
                 </Text>
               </Pressable>
-            ) : null}
+            )}
           </View>
         </View>
 
@@ -893,7 +989,7 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
 
 export function contributeGpuStatusPills(client: PluginClientContext) {
   const pills = new Map<string, () => void>();
-  let stopped = false;
+  let isStopped = false;
 
   function remove(agentId: string) {
     pills.get(agentId)?.();
@@ -901,7 +997,7 @@ export function contributeGpuStatusPills(client: PluginClientContext) {
   }
 
   function upsert(agent: { id: string; workspaceId?: string }) {
-    if (!agent.workspaceId || stopped) {
+    if (isStopped || !agent.workspaceId) {
       remove(agent.id);
       return;
     }
@@ -936,7 +1032,7 @@ export function contributeGpuStatusPills(client: PluginClientContext) {
         scope: "active",
         page: { limit: 200, cursor },
       });
-      if (stopped) return;
+      if (isStopped) return;
       for (const { agent } of entries) upsert(agent);
 
       if (!pageInfo.hasMore) return;
@@ -944,13 +1040,13 @@ export function contributeGpuStatusPills(client: PluginClientContext) {
         throw new Error("Agent list has more pages but no next cursor");
       }
       cursor = pageInfo.nextCursor;
-    } while (!stopped);
+    } while (!isStopped);
   })().catch((error: unknown) => {
     console.error("Could not initialize Prometheus status pills", error);
   });
 
   return () => {
-    stopped = true;
+    isStopped = true;
     unsubscribe();
     for (const removePill of pills.values()) removePill();
     pills.clear();
