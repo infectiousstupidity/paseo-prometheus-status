@@ -28,7 +28,7 @@ import {
 } from "../shared/status";
 
 const CONFIG_PATH = join(
-  process.env.PASEO_HOME?.trim() || join(homedir(), ".paseo"),
+  (process.env.PASEO_HOME || "").trim() || join(homedir(), ".paseo"),
   "paseo-prometheus-status.json",
 );
 const DEFAULT_CONFIG = {
@@ -183,33 +183,36 @@ function readConfigFile(): FileConfig {
 
 function effectiveConfig(
   file: FileConfig,
-  env: Readonly<Record<string, string | undefined>> = process.env,
+  environment: Readonly<Record<string, string | undefined>> = process.env,
 ): PluginConfig {
   return {
-    prometheusUrl: env.PASEO_PROMETHEUS_URL?.trim() || file.prometheusUrl || "",
-    selector: env.PASEO_PROMETHEUS_SELECTOR?.trim() ?? file.selector ?? "",
+    prometheusUrl:
+      environment.PASEO_PROMETHEUS_URL?.trim() || file.prometheusUrl || "",
+    selector:
+      environment.PASEO_PROMETHEUS_SELECTOR?.trim() ?? file.selector ?? "",
     hostLabel:
-      env.PASEO_PROMETHEUS_HOST_LABEL?.trim() ||
+      environment.PASEO_PROMETHEUS_HOST_LABEL?.trim() ||
       file.hostLabel ||
       DEFAULT_CONFIG.hostLabel,
-    showHostLabelInPill: env.PASEO_PROMETHEUS_SHOW_HOST_LABEL_IN_PILL
-      ? env.PASEO_PROMETHEUS_SHOW_HOST_LABEL_IN_PILL.trim().toLowerCase() ===
+    showHostLabelInPill: environment.PASEO_PROMETHEUS_SHOW_HOST_LABEL_IN_PILL
+      ? environment.PASEO_PROMETHEUS_SHOW_HOST_LABEL_IN_PILL.trim().toLowerCase() ===
         "true"
       : (file.showHostLabelInPill ?? DEFAULT_CONFIG.showHostLabelInPill),
-    gpuQuery: env.PASEO_PROMETHEUS_GPU_QUERY?.trim() || file.gpuQuery,
+    gpuQuery: environment.PASEO_PROMETHEUS_GPU_QUERY?.trim() || file.gpuQuery,
     gpuTimestampQuery:
-      env.PASEO_PROMETHEUS_GPU_TIMESTAMP_QUERY?.trim() ||
+      environment.PASEO_PROMETHEUS_GPU_TIMESTAMP_QUERY?.trim() ||
       file.gpuTimestampQuery,
     temperatureQuery:
-      env.PASEO_PROMETHEUS_GPU_TEMPERATURE_QUERY?.trim() ||
+      environment.PASEO_PROMETHEUS_GPU_TEMPERATURE_QUERY?.trim() ||
       file.temperatureQuery,
     memoryUsedQuery:
-      env.PASEO_PROMETHEUS_GPU_MEMORY_USED_QUERY?.trim() ||
+      environment.PASEO_PROMETHEUS_GPU_MEMORY_USED_QUERY?.trim() ||
       file.memoryUsedQuery,
     memoryTotalQuery:
-      env.PASEO_PROMETHEUS_GPU_MEMORY_TOTAL_QUERY?.trim() ||
+      environment.PASEO_PROMETHEUS_GPU_MEMORY_TOTAL_QUERY?.trim() ||
       file.memoryTotalQuery,
-    powerQuery: env.PASEO_PROMETHEUS_GPU_POWER_QUERY?.trim() || file.powerQuery,
+    powerQuery:
+      environment.PASEO_PROMETHEUS_GPU_POWER_QUERY?.trim() || file.powerQuery,
   };
 }
 
@@ -217,11 +220,11 @@ function loadConfig(): PluginConfig {
   return effectiveConfig(readConfigFile());
 }
 
-function activeEnvOverrides(
-  env: Readonly<Record<string, string | undefined>> = process.env,
+function activeEnvironmentOverrides(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
 ): EnvironmentOverrideName[] {
   return ENV_OVERRIDE_NAMES.filter((name) => {
-    const value = env[name];
+    const value = environment[name];
     if (name === "PASEO_PROMETHEUS_SELECTOR") return value !== undefined;
     return value?.trim() !== undefined && value.trim() !== "";
   });
@@ -250,7 +253,7 @@ export function describeGpuStatusConfig(): GpuStatusConfig {
     memoryUsedQuery: config.memoryUsedQuery ?? "",
     memoryTotalQuery: config.memoryTotalQuery ?? "",
     powerQuery: config.powerQuery ?? "",
-    envOverrides: activeEnvOverrides(),
+    envOverrides: activeEnvironmentOverrides(),
     fileValid: isFileValid,
   });
 }
@@ -423,19 +426,19 @@ async function collect(): Promise<CollectionResult> {
       optionalFailures.push(name);
       return new Map();
     }
-    const nonNegative = (value: number) => value >= 0;
+    const isNonNegative = (value: number) => value >= 0;
     const temperatures = optionalValues(optionalResults[0], "temperature");
     const memoryUsed = optionalValues(
       optionalResults[1],
       "memory used",
-      nonNegative,
+      isNonNegative,
     );
     const memoryTotal = optionalValues(
       optionalResults[2],
       "memory total",
-      nonNegative,
+      isNonNegative,
     );
-    const power = optionalValues(optionalResults[3], "power", nonNegative);
+    const power = optionalValues(optionalResults[3], "power", isNonNegative);
     const utilizationTimestamps = valuesByGpu(utilizationTimestampResults);
     const gpusByKey = new Map<
       string,
@@ -488,7 +491,7 @@ async function collect(): Promise<CollectionResult> {
       });
     }
 
-    const gpus = [...gpusByKey.values()].sort(
+    const gpus = [...gpusByKey.values()].toSorted(
       (left, right) =>
         left.id.localeCompare(right.id) || left.key.localeCompare(right.key),
     );
@@ -566,14 +569,15 @@ export async function getGpuStatus(
   if (pending) return pending;
 
   const generation = cacheGeneration;
-  const request = collect().then(({ status, sourceFingerprint }) => {
+  const request = (async () => {
+    const { status, sourceFingerprint } = await collect();
     if (generation === cacheGeneration) {
       cachedStatus = status;
       cachedSourceFingerprint = sourceFingerprint;
       cachedAt = Date.now();
     }
     return status;
-  });
+  })();
   pending = request;
 
   try {

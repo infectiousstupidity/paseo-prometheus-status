@@ -68,7 +68,7 @@ export function contributeGpuAlertPills(client: PluginClientContext) {
   }
 
   function upsertAgent(agent: { id: string; workspaceId?: string }) {
-    if (!agent.workspaceId || isStopped) {
+    if (isStopped || !agent.workspaceId) {
       agents.delete(agent.id);
       removePill(agent.id);
       return;

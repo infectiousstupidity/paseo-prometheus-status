@@ -376,10 +376,12 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
   const status = query.data;
   const state = displayState(status, query.isError);
   const presentation = statusPresentation(state.kind, theme);
-  const isNeedsConfiguration =
+  const requiresConfig =
     config.data !== undefined &&
     (!config.data.fileValid || config.data.prometheusUrl.trim() === "");
-  const statusMessage = isNeedsConfiguration
+  const canShowStatus = !requiresConfig;
+  const hasGpus = (status?.gpus.length ?? 0) > 0;
+  const statusMessage = requiresConfig
     ? null
     : (status?.message ??
       (query.error instanceof Error ? query.error.message : null));
@@ -427,7 +429,7 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
           />
         </View>
 
-        {isNeedsConfiguration ? (
+        {requiresConfig ? (
           <View
             style={{
               padding: 16,
@@ -473,7 +475,7 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
           </Text>
         ) : null}
 
-        {!isNeedsConfiguration && (status?.gpus.length ?? 0) > 0 ? (
+        {canShowStatus && hasGpus && (
           <View
             style={{
               flexDirection: "row",
@@ -491,7 +493,9 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
               />
             ))}
           </View>
-        ) : !isNeedsConfiguration ? (
+        )}
+
+        {canShowStatus && !hasGpus && (
           <View
             style={{
               padding: 20,
@@ -507,7 +511,7 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
                 : "No GPU metrics available"}
             </Text>
           </View>
-        ) : null}
+        )}
       </View>
     </ScrollView>
   );

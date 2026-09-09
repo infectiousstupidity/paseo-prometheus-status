@@ -12,9 +12,13 @@ import {
 
 function noop() {}
 
+function getGpuStatusConfig() {
+  return describeGpuStatusConfig();
+}
+
 export default function contribute(server: PluginServerContext) {
   server.handle(gpuStatusGet, getGpuStatus);
-  server.handle(gpuStatusConfigGet, () => describeGpuStatusConfig());
+  server.handle(gpuStatusConfigGet, getGpuStatusConfig);
   server.handle(gpuStatusConfigSave, saveGpuStatusConfig);
   return noop;
 }
