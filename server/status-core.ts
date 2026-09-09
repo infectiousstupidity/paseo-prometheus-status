@@ -85,7 +85,7 @@ export function prometheusSourceFingerprint(
   queries: PrometheusQueries,
 ): string {
   return JSON.stringify([
-    normalizePrometheusBaseUrl(prometheusUrl).toString(),
+    normalizePrometheusBaseUrl(prometheusUrl).href,
     queries.utilization,
     queries.utilizationTimestamp,
     queries.temperature,
