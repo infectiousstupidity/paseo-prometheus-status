@@ -1,6 +1,6 @@
-import type { PluginClientContext } from "@getpaseo/plugin";
-import { GpuStatusPill } from "./status.client";
-import { gpuStatusGet, type GpuStatus } from "./status.shared";
+import type { PluginClientContext } from "@getpaseo/plugin/client";
+import { gpuStatusGet, type GpuStatus } from "../shared/status";
+import { GpuStatusPill } from "./status";
 
 const REFRESH_INTERVAL_MS = 10_000;
 const WARM_TEMPERATURE_CELSIUS = 75;
@@ -25,10 +25,7 @@ export function gpuAlertLevel(status: GpuStatus): GpuAlertLevel | null {
   if (maxTemperature >= HOT_TEMPERATURE_CELSIUS) return "critical";
 
   const utilization = status.maxUtilizationPercent ?? 0;
-  if (
-    utilization > 0 &&
-    maxTemperature >= WARM_TEMPERATURE_CELSIUS
-  ) {
+  if (utilization > 0 && maxTemperature >= WARM_TEMPERATURE_CELSIUS) {
     return "warning";
   }
 

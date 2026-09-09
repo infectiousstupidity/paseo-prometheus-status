@@ -18,14 +18,14 @@ import {
   valuesByGpu,
   type PrometheusSourceConfig,
   type PrometheusVectorResult,
-} from "./status.core";
+} from "./status-core";
 import {
   gpuStatusConfigGet,
   gpuStatusConfigSave,
   gpuStatusGet,
   type GpuStatus,
   type GpuStatusConfig,
-} from "./status.shared";
+} from "../shared/status";
 
 const CONFIG_PATH = join(
   process.env.PASEO_HOME?.trim() || join(homedir(), ".paseo"),

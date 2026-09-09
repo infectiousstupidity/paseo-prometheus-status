@@ -6,7 +6,7 @@ import {
   gpuMetricKey,
   prometheusSourceFingerprint,
   valuesByGpu,
-} from "../status.core";
+} from "../server/status-core";
 
 test("preserves a Prometheus path prefix", () => {
   const query = 'up{job="dcgm-exporter"}';
