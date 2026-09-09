@@ -38,7 +38,7 @@ const DEFAULT_CONFIG = {
   showHostLabelInPill: false,
 };
 const CACHE_DURATION_MS = 10_000;
-const REQUEST_TIMEOUT_MS = 4_000;
+const REQUEST_TIMEOUT_MS = 4000;
 const ENV_OVERRIDE_NAMES = [
   "PASEO_PROMETHEUS_URL",
   "PASEO_PROMETHEUS_SELECTOR",
@@ -52,7 +52,7 @@ const ENV_OVERRIDE_NAMES = [
   "PASEO_PROMETHEUS_GPU_POWER_QUERY",
 ] as const;
 
-type EnvOverrideName = (typeof ENV_OVERRIDE_NAMES)[number];
+type EnvironmentOverrideName = (typeof ENV_OVERRIDE_NAMES)[number];
 
 interface PluginConfig extends PrometheusSourceConfig {
   hostLabel: string;
@@ -170,7 +170,10 @@ function readConfigFile(): FileConfig {
     hostLabel: optionalString(raw.hostLabel, "hostLabel"),
     showHostLabelInPill: raw.showHostLabelInPill,
     gpuQuery: optionalString(raw.gpuQuery, "gpuQuery"),
-    gpuTimestampQuery: optionalString(raw.gpuTimestampQuery, "gpuTimestampQuery"),
+    gpuTimestampQuery: optionalString(
+      raw.gpuTimestampQuery,
+      "gpuTimestampQuery",
+    ),
     temperatureQuery: optionalString(raw.temperatureQuery, "temperatureQuery"),
     memoryUsedQuery: optionalString(raw.memoryUsedQuery, "memoryUsedQuery"),
     memoryTotalQuery: optionalString(raw.memoryTotalQuery, "memoryTotalQuery"),
@@ -183,10 +186,8 @@ function effectiveConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): PluginConfig {
   return {
-    prometheusUrl:
-      env.PASEO_PROMETHEUS_URL?.trim() || file.prometheusUrl || "",
-    selector:
-      env.PASEO_PROMETHEUS_SELECTOR?.trim() ?? file.selector ?? "",
+    prometheusUrl: env.PASEO_PROMETHEUS_URL?.trim() || file.prometheusUrl || "",
+    selector: env.PASEO_PROMETHEUS_SELECTOR?.trim() ?? file.selector ?? "",
     hostLabel:
       env.PASEO_PROMETHEUS_HOST_LABEL?.trim() ||
       file.hostLabel ||
@@ -208,8 +209,7 @@ function effectiveConfig(
     memoryTotalQuery:
       env.PASEO_PROMETHEUS_GPU_MEMORY_TOTAL_QUERY?.trim() ||
       file.memoryTotalQuery,
-    powerQuery:
-      env.PASEO_PROMETHEUS_GPU_POWER_QUERY?.trim() || file.powerQuery,
+    powerQuery: env.PASEO_PROMETHEUS_GPU_POWER_QUERY?.trim() || file.powerQuery,
   };
 }
 
@@ -219,7 +219,7 @@ function loadConfig(): PluginConfig {
 
 function activeEnvOverrides(
   env: Readonly<Record<string, string | undefined>> = process.env,
-): EnvOverrideName[] {
+): EnvironmentOverrideName[] {
   return ENV_OVERRIDE_NAMES.filter((name) => {
     const value = env[name];
     if (name === "PASEO_PROMETHEUS_SELECTOR") return value !== undefined;
@@ -229,12 +229,12 @@ function activeEnvOverrides(
 
 export function describeGpuStatusConfig(): GpuStatusConfig {
   let file: FileConfig = {};
-  let fileValid = true;
+  let isFileValid = true;
   try {
     file = readConfigFile();
   } catch (error) {
     if (!(error instanceof ConfigFileError)) throw error;
-    fileValid = false;
+    isFileValid = false;
   }
 
   const config = effectiveConfig(file);
@@ -251,14 +251,14 @@ export function describeGpuStatusConfig(): GpuStatusConfig {
     memoryTotalQuery: config.memoryTotalQuery ?? "",
     powerQuery: config.powerQuery ?? "",
     envOverrides: activeEnvOverrides(),
-    fileValid,
+    fileValid: isFileValid,
   });
 }
 
 function writeConfigAtomically(config: FileConfig) {
   mkdirSync(dirname(CONFIG_PATH), { recursive: true });
   const temporaryPath = `${CONFIG_PATH}.${process.pid}.${randomUUID()}.tmp`;
-  let temporaryExists = false;
+  let isTemporaryExists = false;
 
   try {
     writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, {
@@ -266,12 +266,12 @@ function writeConfigAtomically(config: FileConfig) {
       flag: "wx",
       mode: 0o600,
     });
-    temporaryExists = true;
+    isTemporaryExists = true;
     renameSync(temporaryPath, CONFIG_PATH);
-    temporaryExists = false;
+    isTemporaryExists = false;
     if (process.platform !== "win32") chmodSync(CONFIG_PATH, 0o600);
   } finally {
-    if (temporaryExists) {
+    if (isTemporaryExists) {
       try {
         unlinkSync(temporaryPath);
       } catch {
@@ -300,12 +300,12 @@ export function saveGpuStatusConfig(
   if (!prometheusUrl) throw new Error("Prometheus URL is required");
   buildPrometheusQueryUrl(prometheusUrl, "up");
 
-  let replacedInvalidFile = false;
+  let isReplacedInvalidFile = false;
   try {
     readConfigFile();
   } catch (error) {
     if (!(error instanceof ConfigFileError)) throw error;
-    replacedInvalidFile = true;
+    isReplacedInvalidFile = true;
   }
 
   writeConfigAtomically({
@@ -324,7 +324,7 @@ export function saveGpuStatusConfig(
 
   return gpuStatusConfigSave.output.parse({
     ...describeGpuStatusConfig(),
-    replacedInvalidFile,
+    replacedInvalidFile: isReplacedInvalidFile,
   });
 }
 

@@ -8,8 +8,5 @@
     "outDir": ".test-dist",
     "rootDir": "."
   },
-  "include": [
-    "status.core.ts",
-    "tests/**/*.ts"
-  ]
+  "include": ["status.core.ts", "tests/**/*.ts"]
 }

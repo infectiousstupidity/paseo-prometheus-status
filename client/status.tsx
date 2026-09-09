@@ -376,10 +376,10 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
   const status = query.data;
   const state = displayState(status, query.isError);
   const presentation = statusPresentation(state.kind, theme);
-  const needsConfiguration =
+  const isNeedsConfiguration =
     config.data !== undefined &&
     (!config.data.fileValid || config.data.prometheusUrl.trim() === "");
-  const statusMessage = needsConfiguration
+  const statusMessage = isNeedsConfiguration
     ? null
     : (status?.message ??
       (query.error instanceof Error ? query.error.message : null));
@@ -427,7 +427,7 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
           />
         </View>
 
-        {needsConfiguration ? (
+        {isNeedsConfiguration ? (
           <View
             style={{
               padding: 16,
@@ -473,7 +473,7 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
           </Text>
         ) : null}
 
-        {!needsConfiguration && (status?.gpus.length ?? 0) > 0 ? (
+        {!isNeedsConfiguration && (status?.gpus.length ?? 0) > 0 ? (
           <View
             style={{
               flexDirection: "row",
@@ -491,7 +491,7 @@ export function GpuStatusPanel({ theme, layout, host }: PluginAgentPanelProps) {
               />
             ))}
           </View>
-        ) : !needsConfiguration ? (
+        ) : !isNeedsConfiguration ? (
           <View
             style={{
               padding: 20,
