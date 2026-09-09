@@ -4,11 +4,33 @@ A Paseo 0.8+ plugin that shows GPU utilization, temperature, VRAM, and power fro
 
 ## Install
 
+Paseo can install this plugin directly from GitHub. You do **not** need to clone the repository or run `npm install` first.
+
+Recommended GitHub shorthand:
+
 ```bash
 paseo plugin add infectiousstupidity/paseo-prometheus-status
 ```
 
-No `npm install` is needed for normal use. Configure the plugin in **Settings → Plugins → GPU status**, then open the GPU status panel from Paseo's workspace/Explorer panel launcher or search for **Open GPU status** in the Command Center.
+Or use the full Git URL:
+
+```bash
+paseo plugin add https://github.com/infectiousstupidity/paseo-prometheus-status.git
+```
+
+Verify that it is running:
+
+```bash
+paseo plugin ls paseo-prometheus-status
+```
+
+Paseo tracks the repository's default branch, so later updates are also handled directly by Paseo:
+
+```bash
+paseo plugin update paseo-prometheus-status
+```
+
+Configure the plugin in **Settings → Plugins → GPU status**, then open the GPU status panel from Paseo's workspace/Explorer panel launcher or search for **Open GPU status** in the Command Center.
 
 ## Composer alert
 
