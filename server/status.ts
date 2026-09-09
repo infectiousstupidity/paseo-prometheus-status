@@ -18,17 +18,17 @@ import {
   valuesByGpu,
   type PrometheusSourceConfig,
   type PrometheusVectorResult,
-} from "./status.core";
+} from "./status-core";
 import {
   gpuStatusConfigGet,
   gpuStatusConfigSave,
   gpuStatusGet,
   type GpuStatus,
   type GpuStatusConfig,
-} from "./status.shared";
+} from "../shared/status";
 
 const CONFIG_PATH = join(
-  process.env.PASEO_HOME?.trim() || join(homedir(), ".paseo"),
+  (process.env.PASEO_HOME || "").trim() || join(homedir(), ".paseo"),
   "paseo-prometheus-status.json",
 );
 const DEFAULT_CONFIG = {
@@ -38,7 +38,7 @@ const DEFAULT_CONFIG = {
   showHostLabelInPill: false,
 };
 const CACHE_DURATION_MS = 10_000;
-const REQUEST_TIMEOUT_MS = 4_000;
+const REQUEST_TIMEOUT_MS = 4000;
 const ENV_OVERRIDE_NAMES = [
   "PASEO_PROMETHEUS_URL",
   "PASEO_PROMETHEUS_SELECTOR",
@@ -52,7 +52,7 @@ const ENV_OVERRIDE_NAMES = [
   "PASEO_PROMETHEUS_GPU_POWER_QUERY",
 ] as const;
 
-type EnvOverrideName = (typeof ENV_OVERRIDE_NAMES)[number];
+type EnvironmentOverrideName = (typeof ENV_OVERRIDE_NAMES)[number];
 
 interface PluginConfig extends PrometheusSourceConfig {
   hostLabel: string;
@@ -170,7 +170,10 @@ function readConfigFile(): FileConfig {
     hostLabel: optionalString(raw.hostLabel, "hostLabel"),
     showHostLabelInPill: raw.showHostLabelInPill,
     gpuQuery: optionalString(raw.gpuQuery, "gpuQuery"),
-    gpuTimestampQuery: optionalString(raw.gpuTimestampQuery, "gpuTimestampQuery"),
+    gpuTimestampQuery: optionalString(
+      raw.gpuTimestampQuery,
+      "gpuTimestampQuery",
+    ),
     temperatureQuery: optionalString(raw.temperatureQuery, "temperatureQuery"),
     memoryUsedQuery: optionalString(raw.memoryUsedQuery, "memoryUsedQuery"),
     memoryTotalQuery: optionalString(raw.memoryTotalQuery, "memoryTotalQuery"),
@@ -180,36 +183,36 @@ function readConfigFile(): FileConfig {
 
 function effectiveConfig(
   file: FileConfig,
-  env: Readonly<Record<string, string | undefined>> = process.env,
+  environment: Readonly<Record<string, string | undefined>> = process.env,
 ): PluginConfig {
   return {
     prometheusUrl:
-      env.PASEO_PROMETHEUS_URL?.trim() || file.prometheusUrl || "",
+      environment.PASEO_PROMETHEUS_URL?.trim() || file.prometheusUrl || "",
     selector:
-      env.PASEO_PROMETHEUS_SELECTOR?.trim() ?? file.selector ?? "",
+      environment.PASEO_PROMETHEUS_SELECTOR?.trim() ?? file.selector ?? "",
     hostLabel:
-      env.PASEO_PROMETHEUS_HOST_LABEL?.trim() ||
+      environment.PASEO_PROMETHEUS_HOST_LABEL?.trim() ||
       file.hostLabel ||
       DEFAULT_CONFIG.hostLabel,
-    showHostLabelInPill: env.PASEO_PROMETHEUS_SHOW_HOST_LABEL_IN_PILL
-      ? env.PASEO_PROMETHEUS_SHOW_HOST_LABEL_IN_PILL.trim().toLowerCase() ===
+    showHostLabelInPill: environment.PASEO_PROMETHEUS_SHOW_HOST_LABEL_IN_PILL
+      ? environment.PASEO_PROMETHEUS_SHOW_HOST_LABEL_IN_PILL.trim().toLowerCase() ===
         "true"
       : (file.showHostLabelInPill ?? DEFAULT_CONFIG.showHostLabelInPill),
-    gpuQuery: env.PASEO_PROMETHEUS_GPU_QUERY?.trim() || file.gpuQuery,
+    gpuQuery: environment.PASEO_PROMETHEUS_GPU_QUERY?.trim() || file.gpuQuery,
     gpuTimestampQuery:
-      env.PASEO_PROMETHEUS_GPU_TIMESTAMP_QUERY?.trim() ||
+      environment.PASEO_PROMETHEUS_GPU_TIMESTAMP_QUERY?.trim() ||
       file.gpuTimestampQuery,
     temperatureQuery:
-      env.PASEO_PROMETHEUS_GPU_TEMPERATURE_QUERY?.trim() ||
+      environment.PASEO_PROMETHEUS_GPU_TEMPERATURE_QUERY?.trim() ||
       file.temperatureQuery,
     memoryUsedQuery:
-      env.PASEO_PROMETHEUS_GPU_MEMORY_USED_QUERY?.trim() ||
+      environment.PASEO_PROMETHEUS_GPU_MEMORY_USED_QUERY?.trim() ||
       file.memoryUsedQuery,
     memoryTotalQuery:
-      env.PASEO_PROMETHEUS_GPU_MEMORY_TOTAL_QUERY?.trim() ||
+      environment.PASEO_PROMETHEUS_GPU_MEMORY_TOTAL_QUERY?.trim() ||
       file.memoryTotalQuery,
     powerQuery:
-      env.PASEO_PROMETHEUS_GPU_POWER_QUERY?.trim() || file.powerQuery,
+      environment.PASEO_PROMETHEUS_GPU_POWER_QUERY?.trim() || file.powerQuery,
   };
 }
 
@@ -217,11 +220,11 @@ function loadConfig(): PluginConfig {
   return effectiveConfig(readConfigFile());
 }
 
-function activeEnvOverrides(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-): EnvOverrideName[] {
+function activeEnvironmentOverrides(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): EnvironmentOverrideName[] {
   return ENV_OVERRIDE_NAMES.filter((name) => {
-    const value = env[name];
+    const value = environment[name];
     if (name === "PASEO_PROMETHEUS_SELECTOR") return value !== undefined;
     return value?.trim() !== undefined && value.trim() !== "";
   });
@@ -229,12 +232,12 @@ function activeEnvOverrides(
 
 export function describeGpuStatusConfig(): GpuStatusConfig {
   let file: FileConfig = {};
-  let fileValid = true;
+  let isFileValid = true;
   try {
     file = readConfigFile();
   } catch (error) {
     if (!(error instanceof ConfigFileError)) throw error;
-    fileValid = false;
+    isFileValid = false;
   }
 
   const config = effectiveConfig(file);
@@ -250,15 +253,15 @@ export function describeGpuStatusConfig(): GpuStatusConfig {
     memoryUsedQuery: config.memoryUsedQuery ?? "",
     memoryTotalQuery: config.memoryTotalQuery ?? "",
     powerQuery: config.powerQuery ?? "",
-    envOverrides: activeEnvOverrides(),
-    fileValid,
+    envOverrides: activeEnvironmentOverrides(),
+    fileValid: isFileValid,
   });
 }
 
 function writeConfigAtomically(config: FileConfig) {
   mkdirSync(dirname(CONFIG_PATH), { recursive: true });
   const temporaryPath = `${CONFIG_PATH}.${process.pid}.${randomUUID()}.tmp`;
-  let temporaryExists = false;
+  let isTemporaryExists = false;
 
   try {
     writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, {
@@ -266,12 +269,12 @@ function writeConfigAtomically(config: FileConfig) {
       flag: "wx",
       mode: 0o600,
     });
-    temporaryExists = true;
+    isTemporaryExists = true;
     renameSync(temporaryPath, CONFIG_PATH);
-    temporaryExists = false;
+    isTemporaryExists = false;
     if (process.platform !== "win32") chmodSync(CONFIG_PATH, 0o600);
   } finally {
-    if (temporaryExists) {
+    if (isTemporaryExists) {
       try {
         unlinkSync(temporaryPath);
       } catch {
@@ -300,12 +303,12 @@ export function saveGpuStatusConfig(
   if (!prometheusUrl) throw new Error("Prometheus URL is required");
   buildPrometheusQueryUrl(prometheusUrl, "up");
 
-  let replacedInvalidFile = false;
+  let isReplacedInvalidFile = false;
   try {
     readConfigFile();
   } catch (error) {
     if (!(error instanceof ConfigFileError)) throw error;
-    replacedInvalidFile = true;
+    isReplacedInvalidFile = true;
   }
 
   writeConfigAtomically({
@@ -324,7 +327,7 @@ export function saveGpuStatusConfig(
 
   return gpuStatusConfigSave.output.parse({
     ...describeGpuStatusConfig(),
-    replacedInvalidFile,
+    replacedInvalidFile: isReplacedInvalidFile,
   });
 }
 
@@ -423,19 +426,19 @@ async function collect(): Promise<CollectionResult> {
       optionalFailures.push(name);
       return new Map();
     }
-    const nonNegative = (value: number) => value >= 0;
+    const isNonNegative = (value: number) => value >= 0;
     const temperatures = optionalValues(optionalResults[0], "temperature");
     const memoryUsed = optionalValues(
       optionalResults[1],
       "memory used",
-      nonNegative,
+      isNonNegative,
     );
     const memoryTotal = optionalValues(
       optionalResults[2],
       "memory total",
-      nonNegative,
+      isNonNegative,
     );
-    const power = optionalValues(optionalResults[3], "power", nonNegative);
+    const power = optionalValues(optionalResults[3], "power", isNonNegative);
     const utilizationTimestamps = valuesByGpu(utilizationTimestampResults);
     const gpusByKey = new Map<
       string,
@@ -488,7 +491,7 @@ async function collect(): Promise<CollectionResult> {
       });
     }
 
-    const gpus = [...gpusByKey.values()].sort(
+    const gpus = [...gpusByKey.values()].toSorted(
       (left, right) =>
         left.id.localeCompare(right.id) || left.key.localeCompare(right.key),
     );
@@ -566,14 +569,15 @@ export async function getGpuStatus(
   if (pending) return pending;
 
   const generation = cacheGeneration;
-  const request = collect().then(({ status, sourceFingerprint }) => {
+  const request = (async () => {
+    const { status, sourceFingerprint } = await collect();
     if (generation === cacheGeneration) {
       cachedStatus = status;
       cachedSourceFingerprint = sourceFingerprint;
       cachedAt = Date.now();
     }
     return status;
-  });
+  })();
   pending = request;
 
   try {

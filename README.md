@@ -1,6 +1,6 @@
 # Paseo Prometheus Status
 
-A Paseo v0.7 plugin that shows GPU utilization, temperature, VRAM, and power from Prometheus. The composer stays clear during normal operation and only shows a GPU pill when temperature needs attention.
+A Paseo 0.8+ plugin that shows GPU utilization, temperature, VRAM, and power from Prometheus. The composer stays clear during normal operation and only shows a GPU pill when temperature needs attention.
 
 ## Install
 
@@ -8,9 +8,7 @@ A Paseo v0.7 plugin that shows GPU utilization, temperature, VRAM, and power fro
 paseo plugin add infectiousstupidity/paseo-prometheus-status
 ```
 
-No `npm install` is needed for normal use.
-
-Open the GPU status panel after installation. The settings form appears automatically until a Prometheus URL is configured. Later, use the **Settings** button in the panel header.
+No `npm install` is needed for normal use. Configure the plugin in **Settings → Plugins → GPU status**, then open the GPU status panel from Paseo's workspace/Explorer panel launcher or search for **Open GPU status** in the Command Center.
 
 ## Composer alert
 
@@ -22,9 +20,7 @@ The composer pill is alert-only:
 
 The critical-temperature override is intentional. A dangerously hot idle GPU should not disappear just because utilization reads zero.
 
-Press the pill to open the full GPU status panel. When the pill is hidden, open the panel from Paseo's workspace/Explorer panel launcher or search for **Open GPU status** in the Command Center.
-
-The status pane shows utilization, temperature, VRAM, and power for each GPU.
+Press the pill to open the full GPU status panel. The panel shows utilization, temperature, VRAM, and power for each GPU.
 
 ![Per-GPU status pane in Paseo](docs/images/status-pane.png)
 
@@ -47,13 +43,13 @@ Prometheus alerting rules can also be used as a single source of truth, but the 
 
 ## Configuration
 
-Use the settings form in the GPU status panel for normal setup. It lets you configure:
+Open **Settings → Plugins → GPU status**. The native Paseo settings screen lets you configure:
 
 - Prometheus URL
 - Metric selector
 - Host label
 - Whether the host label appears in the composer pill
-- Optional custom Prometheus queries under **Advanced queries**
+- Optional custom Prometheus queries
 
 Saving updates the plugin immediately. You do not need to reload Paseo.
 
@@ -80,7 +76,7 @@ With `showHostLabelInPill` set to `false`, an active alert pill shows a compact 
 
 ### Custom queries
 
-Open **Advanced queries** in the settings form to replace any built-in query. Leave a field blank to keep the default.
+The **Advanced queries** section can replace any built-in query. Leave a field blank to keep the default.
 
 The matching JSON properties are:
 
@@ -112,7 +108,7 @@ Environment variables are available for containers and automated deployments. Th
 - `PASEO_PROMETHEUS_GPU_MEMORY_TOTAL_QUERY`
 - `PASEO_PROMETHEUS_GPU_POWER_QUERY`
 
-The settings form shows which environment variables are overriding saved values. Restart the Paseo daemon after changing environment variables.
+The settings screen shows which environment variables are overriding saved values. Restart the Paseo daemon after changing environment variables.
 
 The plugin refreshes every 10 seconds. A sample older than 30 seconds is shown as stale. A missing or unreachable Prometheus URL is shown as offline in the full status panel.
 
@@ -135,9 +131,13 @@ On macOS and Linux, settings saved through the plugin are written with mode `060
 
 ## Development
 
+This branch targets Paseo 0.8 and later. It does not include a v0.7 compatibility entry.
+
 ```bash
-npm install
+npm ci
 npm run typecheck
+npm run lint
+npm run format:check
 npm test
 paseo plugin install /absolute/path/to/paseo-prometheus-status
 ```
@@ -148,6 +148,7 @@ After source changes:
 npm run typecheck
 npm test
 paseo plugin reload paseo-prometheus-status
+paseo plugin ls paseo-prometheus-status
 ```
 
 ## License

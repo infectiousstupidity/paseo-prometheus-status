@@ -1,6 +1,6 @@
-import type { PluginClientContext } from "@getpaseo/plugin";
-import { GpuStatusPill } from "./status.client";
-import { gpuStatusGet, type GpuStatus } from "./status.shared";
+import type { PluginClientContext } from "@getpaseo/plugin/client";
+import { gpuStatusGet, type GpuStatus } from "../shared/status";
+import { GpuStatusPill } from "./status";
 
 const REFRESH_INTERVAL_MS = 10_000;
 const WARM_TEMPERATURE_CELSIUS = 75;
@@ -25,10 +25,7 @@ export function gpuAlertLevel(status: GpuStatus): GpuAlertLevel | null {
   if (maxTemperature >= HOT_TEMPERATURE_CELSIUS) return "critical";
 
   const utilization = status.maxUtilizationPercent ?? 0;
-  if (
-    utilization > 0 &&
-    maxTemperature >= WARM_TEMPERATURE_CELSIUS
-  ) {
+  if (utilization > 0 && maxTemperature >= WARM_TEMPERATURE_CELSIUS) {
     return "warning";
   }
 
@@ -39,7 +36,7 @@ export function contributeGpuAlertPills(client: PluginClientContext) {
   const agents = new Map<string, ActiveAgent>();
   const pills = new Map<string, () => void>();
   let alertLevel: GpuAlertLevel | null = null;
-  let stopped = false;
+  let isStopped = false;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   function removePill(agentId: string) {
@@ -48,7 +45,7 @@ export function contributeGpuAlertPills(client: PluginClientContext) {
   }
 
   function reconcileAgent(agent: ActiveAgent) {
-    if (stopped || alertLevel === null) {
+    if (isStopped || alertLevel === null) {
       removePill(agent.id);
       return;
     }
@@ -71,7 +68,7 @@ export function contributeGpuAlertPills(client: PluginClientContext) {
   }
 
   function upsertAgent(agent: { id: string; workspaceId?: string }) {
-    if (!agent.workspaceId || stopped) {
+    if (isStopped || !agent.workspaceId) {
       agents.delete(agent.id);
       removePill(agent.id);
       return;
@@ -94,7 +91,7 @@ export function contributeGpuAlertPills(client: PluginClientContext) {
     } catch (error) {
       console.error("Could not refresh GPU alert pill state", error);
     } finally {
-      if (!stopped) {
+      if (!isStopped) {
         refreshTimer = setTimeout(refreshAlertLevel, REFRESH_INTERVAL_MS);
       }
     }
@@ -116,7 +113,7 @@ export function contributeGpuAlertPills(client: PluginClientContext) {
         scope: "active",
         page: { limit: 200, cursor },
       });
-      if (stopped) return;
+      if (isStopped) return;
       for (const { agent } of entries) upsertAgent(agent);
 
       if (!pageInfo.hasMore) return;
@@ -124,7 +121,7 @@ export function contributeGpuAlertPills(client: PluginClientContext) {
         throw new Error("Agent list has more pages but no next cursor");
       }
       cursor = pageInfo.nextCursor;
-    } while (!stopped);
+    } while (!isStopped);
   })().catch((error: unknown) => {
     console.error("Could not initialize GPU alert pills", error);
   });
@@ -132,7 +129,7 @@ export function contributeGpuAlertPills(client: PluginClientContext) {
   void refreshAlertLevel();
 
   return () => {
-    stopped = true;
+    isStopped = true;
     unsubscribe();
     if (refreshTimer !== undefined) clearTimeout(refreshTimer);
     agents.clear();
