@@ -65,6 +65,7 @@ jobs:
           )
           replace("server/status.ts", "env.", "environment.")
           replace("server/status.ts", "env[name]", "environment[name]")
+          replace("server/status.ts", "process.environment.", "process.env.")
           replace(
               "server/status.ts",
               "const gpus = [...gpusByKey.values()].sort(",
