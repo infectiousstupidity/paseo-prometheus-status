@@ -1,7 +1,6 @@
 import {
   type PluginAgentPanelProps,
   type PluginComposerPillProps,
-  type PluginTheme,
   useRpc,
 } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
@@ -26,6 +25,8 @@ type DisplayKind =
   | "hot"
   | "stale"
   | "offline";
+
+type PluginColors = PluginAgentPanelProps["theme"]["colors"];
 
 function ageInSeconds(sampledAt: string | null): number | null {
   if (!sampledAt) return null;
@@ -110,7 +111,7 @@ function statusPresentation(
   return { label: "Healthy", color: theme.colors.statusSuccess };
 }
 
-function pillColor(kind: DisplayKind, colors: PluginTheme["colors"]): string {
+function pillColor(kind: DisplayKind, colors: PluginColors): string {
   if (kind === "hot" || kind === "offline") return colors.statusDanger;
   if (kind === "warm" || kind === "stale") return colors.statusWarning;
   return colors.foregroundMuted;
@@ -118,7 +119,7 @@ function pillColor(kind: DisplayKind, colors: PluginTheme["colors"]): string {
 
 function temperatureColor(
   temperatureCelsius: number | null,
-  colors: PluginTheme["colors"],
+  colors: PluginColors,
 ): string {
   if (
     temperatureCelsius !== null &&
